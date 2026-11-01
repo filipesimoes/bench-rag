@@ -1,0 +1,16 @@
+name: standard_dense_vllm_rerank_rag
+pipeline_type: standard
+parser_type: pymupdf
+chunker_type: recursive
+chunk_size: 1000
+chunk_overlap: 200
+embedding_type: openai
+vector_store_type: qdrant
+generator_type: openai
+judge_type: openai
+reranker_type: vllm
+reranker_model: BAAI/bge-reranker-v2-m3
+rerank_fetch_k: 20
+top_k: 5
+collection_name: police_reports
+distance_metric: cosine

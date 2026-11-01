@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bench-rag"
+version = "0.1.0"
+description = "Modular RAG Evaluation Framework for Criminal Investigation Reports"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+dependencies = [
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.0",
+    "pymupdf>=1.24.0",
+    "pdfplumber>=0.11.0",
+    "qdrant-client>=1.9.0",
+    "rank-bm25>=0.2.2",
+    "httpx>=0.27.0",
+    "typer[all]>=0.12.0",
+    "rich>=13.7.0",
+    "tabulate>=0.9.0",
+    "pyyaml>=6.0.1",
+    "numpy>=1.26.0",
+    "reportlab>=4.2.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.1.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+    "pytest-mock>=3.14.0",
+    "ruff>=0.4.0",
+]
+
+[project.scripts]
+bench-rag = "bench_rag.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bench_rag"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

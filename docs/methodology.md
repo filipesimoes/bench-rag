@@ -1,0 +1,133 @@
+# Evaluation Methodology & Experimental Protocol
+
+This document outlines the theoretical foundation, mathematical metric formulations, investigative taxonomies, and experimental evaluation protocol implemented in the **Modular RAG Evaluation Framework for Criminal Investigation Reports**.
+
+---
+
+## 1. Investigative Taxonomies
+
+Evaluating RAG architectures on forensic police investigation reports requires specialized categorization because criminal reports differ significantly from generic web text. They contain formal police structures (Portarias, Autos de Apreensão, Relatórios de Missão), legal qualifications, financial layering, and telecommunication intercepts.
+
+### 1.1 Typology Categories ($T$)
+The benchmark partitions queries into three distinct investigative typologies:
+
+- **`T1` — Identification & Associations**:
+  - Focuses on uncovering beneficial owners (*proprietários de fato*), nominee strawmen (*laranjas*), corporate registration data (tax IDs, equity distribution), shell corporations, command structures, and family/business association trees.
+  - *Example*: Identifying that a nominee earning minimum wage legally owns \$14M in corporate equity via an undisclosed power of attorney held by the real mastermind.
+
+- **`T2` — Criminal Dynamics & Modus Operandi**:
+  - Focuses on mechanics of illicit schemes, money laundering typologies (smurfing cash deposits below reporting limits, trade-based over-invoicing, cryptocurrency mixers), concealment maneuvers, and criminal slang.
+  - *Example*: Analyzing how cash is structured into deposits below \$10,000 across multiple bank branches and converted into over-invoiced industrial import machinery.
+
+- **`T3` — Tracking & Chronology**:
+  - Focuses on reconstructed timelines, sequential events, international SWIFT bank wire progressions, and telecommunication intercept sequences.
+  - *Example*: Tracking capital displaced from a primary shell entity across offshore banks to the ultimate purchase of luxury vessels, and correlating that timeline with intercepted orders to destroy evidence.
+
+---
+
+### 1.2 Complexity Levels ($C$)
+
+- **`C1` — Low / Factual**:
+  - Literal, single-document information extraction. The target fact (e.g. suspect's tax ID, registered company address, wire date) exists verbatim in a single page/passage.
+  - *Goal*: Tests basic retrieval precision and factual extraction fidelity.
+
+- **`C2` — Medium / Relational**:
+  - Cross-document relational aggregation. Answering the query requires synthesizing facts located across multiple separate inquiry volumes or distinct investigation reports.
+  - *Goal*: Tests retrieval recall, exhaustiveness, and multi-hop reasoning.
+
+- **`C3` — High / Analytical**:
+  - Broad inferential synthesis concerning criminal intent (*mens rea* / *dolo*), conscious participation in unlawful schemes, or top-level organizational command. Facts must be correlated with behavioral evidence (e.g., ordering records burned upon learning of warrants).
+  - *Goal*: Tests high-level reasoning, contextual completeness, and resistance to hallucination.
+
+---
+
+## 2. Metric Formulations
+
+### 2.1 Retrieval Metrics
+Let $R_k = [d_1, d_2, \dots, d_k]$ be the ranked list of retrieved inquiry document identifiers at cutoff $k$, and let $G = \{g_1, g_2, \dots, g_m\}$ be the ground-truth set of cited inquiry references (`inquiry_references`).
+
+- **$\text{Precision}@k$**:
+  $$\text{Precision}@k = \frac{|R_k \cap G|}{\min(k, |R_k|)}$$
+
+- **$\text{Recall}@k$**:
+  $$\text{Recall}@k = \frac{|R_k \cap G|}{|G|}$$
+
+- **$\text{Hit Rate}@k$**:
+  $$\text{HitRate}@k = \begin{cases} 1 & \text{if } R_k \cap G \neq \emptyset \\ 0 & \text{otherwise} \end{cases}$$
+
+- **Mean Reciprocal Rank ($\text{MRR}$)**:
+  $$\text{MRR} = \begin{cases} \frac{1}{\min \{ i \mid d_i \in G \}} & \text{if } R_k \cap G \neq \emptyset \\ 0 & \text{otherwise} \end{cases}$$
+
+---
+
+### 2.2 Lexical Generation Metrics
+Let $C_{\text{cand}}$ be the generated answer tokens and $C_{\text{ref}}$ be the ground-truth reference answer tokens.
+
+- **$\text{Token } F_1$**:
+  $$\text{Precision}_{\text{tok}} = \frac{|C_{\text{cand}} \cap C_{\text{ref}}|}{|C_{\text{cand}}|}, \quad \text{Recall}_{\text{tok}} = \frac{|C_{\text{cand}} \cap C_{\text{ref}}|}{|C_{\text{ref}}|}$$
+  $$F_1 = \frac{2 \cdot \text{Precision}_{\text{tok}} \cdot \text{Recall}_{\text{tok}}}{\text{Precision}_{\text{tok}} + \text{Recall}_{\text{tok}}}$$
+
+- **$\text{ROUGE-L}$ (Longest Common Subsequence)**:
+  $$R_{\text{LCS}} = \frac{\text{LCS}(C_{\text{cand}}, C_{\text{ref}})}{|C_{\text{ref}}|}, \quad P_{\text{LCS}} = \frac{\text{LCS}(C_{\text{cand}}, C_{\text{ref}})}{|C_{\text{cand}}|}$$
+  $$\text{ROUGE-L} = \frac{(1 + \beta^2) R_{\text{LCS}} P_{\text{LCS}}}{R_{\text{LCS}} + \beta^2 P_{\text{LCS}}} \quad (\beta = 1.2)$$
+
+- **$\text{BLEU-4}$**:
+  $$\text{BLEU-4} = \text{BP} \cdot \exp\left( \sum_{n=1}^4 w_n \ln p_n \right)$$
+  where $\text{BP} = \min\left(1, e^{1 - \frac{|C_{\text{ref}}|}{|C_{\text{cand}}|}}\right)$ and $p_n$ uses add-1 smoothing.
+
+---
+
+### 2.3 LLM-as-a-Judge Forensic Metrics
+A dedicated Judge model evaluates the generated response on a continuous scale $[0.0, 1.0]$ across three dimensions:
+
+1. **Faithfulness (Groundedness)**:
+   Measures whether every factual claim in the generated answer is substantiated by the retrieved document evidence. Penalizes forensic hallucinations.
+2. **Answer Relevance**:
+   Measures whether the generated answer directly addresses the specific investigative question asked, without evasion or extraneous fluff.
+3. **Context Recall**:
+   Measures whether key factual points present in the official reference answer are captured in the generated output.
+
+---
+
+## 3. RAG Architectures & Reciprocal Rank Fusion (RRF)
+
+The framework benchmarks two primary RAG paradigms:
+
+### 3.1 Standard Dense RAG
+1. Encodes query into dense vector $v_q = \text{Embed}(q)$.
+2. Retrieves top-$k$ nearest chunks in embedding space via cosine similarity:
+   $$\text{sim}(v_q, v_c) = \frac{v_q \cdot v_c}{\|v_q\| \|v_c\|}$$
+3. Synthesizes answer using context evidence.
+
+### 3.2 Hybrid RAG with Reciprocal Rank Fusion (RRF)
+Combines dense semantic vector retrieval with BM25 Okapi lexical matching. Dense retrieval excels at conceptual synonyms (e.g. *nominee* vs *strawman*), while BM25 excels at exact keyword matching (e.g., tax IDs, license plates, bank account numbers).
+
+For candidate chunk $c$, given rank $r_{\text{dense}}(c)$ in vector search and rank $r_{\text{bm25}}(c)$ in BM25:
+$$\text{RRF}(c) = \frac{w_{\text{dense}}}{k_0 + r_{\text{dense}}(c)} + \frac{w_{\text{bm25}}}{k_0 + r_{\text{bm25}}(c)}$$
+where $k_0 = 60$ is the standard smoothing constant, and $w_{\text{dense}} = w_{\text{bm25}} = 0.5$ by default.
+
+### 3.3 Two-Stage Retrieval with Cross-Encoder Reranking (Optional)
+To overcome the bi-encoder semantic compression bottleneck and the purely positional heuristic of RRF, both Standard and Hybrid pipelines optionally execute a second-stage cross-encoder re-ranking pass:
+
+1. **Stage 1 (Coarse Retrieval)**: Retrieves an expanded candidate pool of size $K_{\text{fetch}} = \max(\text{rerank\_fetch\_k}, k)$ (typically 20-30 chunks) via dense vector similarity or hybrid RRF fusion.
+2. **Stage 2 (Fine Re-ranking)**: The candidate chunks and query $q$ are jointly evaluated with full cross-attention by a dedicated reranker model (such as `BAAI/bge-reranker-v2-m3` running on vLLM):
+   $$s(q, c) = \text{CrossEncoder}(q, c)$$
+   Chunks are sorted by descending $s(q, c)$, and the top-$k$ (e.g., $k=5$) highest-scoring chunks are delivered to the generator LLM prompt. The initial retrieval rank and score are preserved in the chunk metadata for displacement auditing.
+
+#### Formulation Matrix: Candidate Pool ($K_{\text{fetch}}$) vs. Final Cutoff ($k$)
+
+| Architectural Mode | Reranker State | Stage 1 Candidate Pool ($K_{\text{fetch}}$) | Stage 2 / Final Context Size ($k$) |
+| :--- | :---: | :--- | :--- |
+| **Standard Dense** | **Disabled** | $K_{\text{fetch}} = k$ (e.g. 5) | $k$ (direct vector similarity slice) |
+| **Standard Dense** | **Enabled** | $K_{\text{fetch}} = \max(\text{rerank\_fetch\_k}, k)$ (e.g. 20) | $k$ (top-$k$ cross-encoder scores) |
+| **Hybrid RRF** | **Disabled** | $\max(2k, 10)$ dense + $\max(2k, 10)$ BM25 | $k$ (direct RRF reciprocal rank slice) |
+| **Hybrid RRF** | **Enabled** | $K_{\text{fetch}}$ dense + $K_{\text{fetch}}$ BM25 $\xrightarrow{\text{RRF}} K_{\text{fetch}}$ | $k$ (top-$k$ cross-encoder scores) |
+
+---
+
+## 4. Experimental Protocol
+1. **Document Ingestion**: Cleanly parse official forensic PDFs, extracting text, page numbering, and metadata.
+2. **Indexing**: Partition documents into overlapping chunks, embed them, and index them into Qdrant.
+3. **Inference Execution**: Query the candidate pipeline across all rows in `ground_truth.csv`.
+4. **Metric Aggregation**: Aggregate scores globally, across typologies ($T1, T2, T3$), across complexities ($C1, C2, C3$), and across the complete $3 \times 3$ taxonomy matrix.
+5. **Report Generation**: Export Markdown, JSON, and CSV run artifacts.

@@ -1,0 +1,27 @@
+name: vanilla_standard_rag
+pipeline_type: standard       # Purely dense vector RAG (no lexical/BM25 fusion)
+parser_type: pdfplumber       # Layout-aware parser
+
+# Preprocessing / header & footer sanitization parameters
+clean_headers_footers: true       # Enable sanitization of headers, footers, and PJe metadata
+header_margin: 50.0               # Top margin in points for fixed header cropping
+footer_margin: 40.0               # Bottom margin in points for fixed footer/signature cropping
+detect_repeated_headers: true     # Automatically detect repetitive text blocks across pages
+repeated_header_threshold: 0.3    # Repetition threshold (occurrence in >= 30% of pages)
+remove_pje_metadata: true         # Remove electronic signature bars, URLs, and PJe watermarks
+remove_page_numbers: true         # Remove isolated page numbers (e.g., Pag. X, standalone digits)
+preserve_first_header: true       # Preserve 1st occurrence of institutional header (cover page)
+custom_header_patterns: []        # Additional custom regex patterns for headers
+custom_footer_patterns: []        # Additional custom regex patterns for footers
+chunker_type: recursive           # Default chunker respecting paragraph boundaries
+chunk_size: 1000                  # Default window of ~250 tokens
+chunk_overlap: 200                # 20% overlap
+embedding_type: openai            # Default dense embedding model
+vector_store_type: qdrant         # Application vector database
+generator_type: openai            # Default LLM generator
+judge_type: openai                # Default evaluation judge
+reranker_type: vllm               # Default reranker
+rerank_fetch_k: 20                # Top-20 candidate pool
+top_k: 5                          # Top-5 retrieved chunks
+collection_name: police_reports
+distance_metric: cosine           # Cosine distance metric

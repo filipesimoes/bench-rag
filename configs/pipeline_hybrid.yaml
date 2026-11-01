@@ -1,0 +1,16 @@
+name: hybrid_bm25_dense_rag
+pipeline_type: hybrid
+parser_type: pymupdf
+chunker_type: recursive
+chunk_size: 1000
+chunk_overlap: 200
+embedding_type: mock
+vector_store_type: memory
+generator_type: mock
+judge_type: mock
+top_k: 5
+collection_name: police_reports
+distance_metric: cosine
+rrf_k: 60
+bm25_weight: 0.5
+dense_weight: 0.5
