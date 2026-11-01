@@ -130,6 +130,17 @@ docker compose run --rm app python -m bench_rag.cli evaluate \
     --input-dir data/raw_reports \
     --output-dir reports/run_default
 ```
+
+If documents are already indexed in your vector store (e.g. after running `index`), skip ingestion and indexing to evaluate queries directly:
+```bash
+docker compose run --rm app python -m bench_rag.cli evaluate \
+    --benchmark-csv data/ground_truth.csv \
+    --pipeline-config configs/pipeline_default.yaml \
+    --skip-indexing \
+    --output-dir reports/run_default
+```
+*(Alias: `--skip-ingest`)*
+
 Outputs generated in `reports/run_default/`:
 - `evaluation_report.md`: Markdown report with global summary, typology breakdown, complexity breakdown, taxonomy matrix, and granular query results.
 - `run_summary.json`: Complete machine-readable summary.
@@ -145,6 +156,17 @@ docker compose run --rm app python -m bench_rag.cli compare \
     --input-dir data/raw_reports \
     --output-dir reports/comparison_run
 ```
+
+To run comparison directly against existing pre-indexed collections without re-indexing:
+```bash
+docker compose run --rm app python -m bench_rag.cli compare \
+    --benchmark-csv data/ground_truth.csv \
+    --config-a configs/pipeline_default.yaml \
+    --config-b configs/pipeline_hybrid.yaml \
+    --skip-indexing \
+    --output-dir reports/comparison_run
+```
+
 Outputs:
 - `reports/comparison_run/comparison_report.md`: Side-by-side head-to-head comparison table with absolute deltas across all retrieval, lexical, and LLM-judge metrics.
 

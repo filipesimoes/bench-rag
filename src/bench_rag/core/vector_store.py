@@ -56,3 +56,7 @@ class VectorStore(Protocol):
     def get_all_chunks(self, collection_name: str) -> list[Chunk]:
         """Retrieve all stored chunks from the collection (useful for hybrid BM25 index)."""
         ...
+
+    def count_chunks(self, collection_name: str) -> int:
+        """Return the number of stored chunks/points in the collection."""
+        ...

@@ -286,41 +286,72 @@ def evaluate(
     no_progress: bool = typer.Option(
         False, "--no-progress", help="Disable interactive progress bars."
     ),
+    skip_indexing: bool = typer.Option(
+        False,
+        "--skip-indexing",
+        "--skip-ingest",
+        help="Skip document ingestion and indexing; evaluate against an existing vector store index.",
+    ),
 ) -> None:
     """Run benchmark evaluation on a RAG pipeline and export reports."""
     cfg = load_pipeline_config(pipeline_config)
     pipeline = build_pipeline_from_config(cfg)
     effective_top_k = top_k if top_k is not None else cfg.top_k
 
-    # Ensure documents are indexed into the pipeline's vector store
-    parser = _build_parser_from_config(cfg, clean_override=clean_headers_footers)
-    chunker = get_chunker(
-        chunker_type=cfg.chunker_type,
-        chunk_size=cfg.chunk_size,
-        chunk_overlap=cfg.chunk_overlap,
-    )
-    pdf_files = sorted(Path(input_dir).glob("*.pdf"))
-    all_docs = []
-    with track_files(
-        pdf_files,
-        description="[bold cyan]Ingesting PDF reports[/bold cyan]",
-        no_progress=no_progress,
-    ) as tracker:
-        for pdf in pdf_files:
-            size_str = format_file_size(pdf.stat().st_size)
-            tracker.update_detail(f"File: {pdf.name} ({size_str})")
-            all_docs.extend(parser.parse(pdf))
-            tracker.advance(1)
+    all_docs: list[Document] = []
+    chunks: list[Chunk] = []
 
-    chunks = chunker.chunk(all_docs)
-    _index_chunks_with_progress(
-        chunks=chunks,
-        embedding_model=pipeline.embedding_model,
-        vector_store=pipeline.vector_store,
-        collection_name=cfg.collection_name,
-        vector_store_type=cfg.vector_store_type,
-        no_progress=no_progress,
-    )
+    if not skip_indexing:
+        # Ensure documents are indexed into the pipeline's vector store
+        parser = _build_parser_from_config(cfg, clean_override=clean_headers_footers)
+        chunker = get_chunker(
+            chunker_type=cfg.chunker_type,
+            chunk_size=cfg.chunk_size,
+            chunk_overlap=cfg.chunk_overlap,
+        )
+        pdf_files = sorted(Path(input_dir).glob("*.pdf"))
+        if not pdf_files:
+            console.print(
+                f"[bold red]Error:[/bold red] No PDF reports found in '{input_dir}'. "
+                f"If the vector database is already populated, run with [bold cyan]--skip-indexing[/bold cyan]."
+            )
+            raise typer.Exit(code=1)
+
+        with track_files(
+            pdf_files,
+            description="[bold cyan]Ingesting PDF reports[/bold cyan]",
+            no_progress=no_progress,
+        ) as tracker:
+            for pdf in pdf_files:
+                size_str = format_file_size(pdf.stat().st_size)
+                tracker.update_detail(f"File: {pdf.name} ({size_str})")
+                all_docs.extend(parser.parse(pdf))
+                tracker.advance(1)
+
+        chunks = chunker.chunk(all_docs)
+        _index_chunks_with_progress(
+            chunks=chunks,
+            embedding_model=pipeline.embedding_model,
+            vector_store=pipeline.vector_store,
+            collection_name=cfg.collection_name,
+            vector_store_type=cfg.vector_store_type,
+            no_progress=no_progress,
+        )
+    else:
+        chunk_count = pipeline.vector_store.count_chunks(cfg.collection_name)
+        if chunk_count == 0:
+            console.print(
+                f"[bold red]Error:[/bold red] Collection '[bold cyan]{cfg.collection_name}[/bold cyan]' "
+                f"does not exist or has 0 chunks in vector store '{cfg.vector_store_type}'. "
+                f"Make sure documents were indexed beforehand (e.g. via 'bench-rag index')."
+            )
+            raise typer.Exit(code=1)
+
+        console.print(
+            f"[bold green]✓[/bold green] Skipping ingestion and indexing. "
+            f"Evaluating against existing collection '[bold yellow]{cfg.collection_name}[/bold yellow]' "
+            f"([bold cyan]{chunk_count}[/bold cyan] chunks available)."
+        )
 
     # Load dataset
     dataset = load_ground_truth_csv(benchmark_csv)
@@ -358,7 +389,8 @@ def evaluate(
     export_evaluation_json(summary, output_path=json_file)
     export_samples_csv(summary, output_path=csv_file)
     generate_all_question_reports(summary, output_dir=questions_dir)
-    export_document_chunks(chunks=chunks, output_dir=chunks_dir, documents=all_docs)
+    if chunks:
+        export_document_chunks(chunks=chunks, output_dir=chunks_dir, documents=all_docs)
 
     # Display Rich summary table
     ov = summary.overall
@@ -420,9 +452,10 @@ def evaluate(
     console.print(
         f"[bold green]✓[/bold green] Individual question reports written to: [bold cyan]{questions_dir}[/bold cyan]"
     )
-    console.print(
-        f"[bold green]✓[/bold green] Document chunks exported to: [bold cyan]{chunks_dir}[/bold cyan]"
-    )
+    if chunks:
+        console.print(
+            f"[bold green]✓[/bold green] Document chunks exported to: [bold cyan]{chunks_dir}[/bold cyan]"
+        )
 
 
 @app.command("compare")
@@ -453,6 +486,12 @@ def compare(
     no_progress: bool = typer.Option(
         False, "--no-progress", help="Disable interactive progress bars."
     ),
+    skip_indexing: bool = typer.Option(
+        False,
+        "--skip-indexing",
+        "--skip-ingest",
+        help="Skip document ingestion and indexing; evaluate against existing vector store collections.",
+    ),
 ) -> None:
     """Run comparative benchmarking between two RAG pipeline architectures."""
     cfg_a = load_pipeline_config(config_a)
@@ -460,57 +499,107 @@ def compare(
     top_k_a = top_k if top_k is not None else cfg_a.top_k
     top_k_b = top_k if top_k is not None else cfg_b.top_k
 
+    pipe_a = build_pipeline_from_config(cfg_a)
+    pipe_b = build_pipeline_from_config(cfg_b)
+
     dataset = load_ground_truth_csv(benchmark_csv)
 
-    # Ingest PDFs
-    parser = _build_parser_from_config(cfg_a, clean_override=clean_headers_footers)
-    chunker_a = get_chunker(
-        chunker_type=cfg_a.chunker_type,
-        chunk_size=cfg_a.chunk_size,
-        chunk_overlap=cfg_a.chunk_overlap,
-    )
-    pdf_files = sorted(Path(input_dir).glob("*.pdf"))
-    all_docs = []
-    with track_files(
-        pdf_files,
-        description="[bold cyan]Ingesting PDF reports for comparison[/bold cyan]",
-        no_progress=no_progress,
-    ) as tracker:
-        for pdf in pdf_files:
-            size_str = format_file_size(pdf.stat().st_size)
-            tracker.update_detail(f"File: {pdf.name} ({size_str})")
-            all_docs.extend(parser.parse(pdf))
-            tracker.advance(1)
+    all_docs: list[Document] = []
+    chunks_a: list[Chunk] = []
+    chunks_b: list[Chunk] = []
+    distinct_chunking = False
 
-    chunks_a = chunker_a.chunk(all_docs)
-    texts_a = [c.text for c in chunks_a]
-
-    distinct_chunking = (
-        cfg_a.chunker_type != cfg_b.chunker_type
-        or cfg_a.chunk_size != cfg_b.chunk_size
-        or cfg_a.chunk_overlap != cfg_b.chunk_overlap
-    )
-    if distinct_chunking:
-        chunker_b = get_chunker(
-            chunker_type=cfg_b.chunker_type,
-            chunk_size=cfg_b.chunk_size,
-            chunk_overlap=cfg_b.chunk_overlap,
+    if not skip_indexing:
+        # Ingest PDFs
+        parser = _build_parser_from_config(cfg_a, clean_override=clean_headers_footers)
+        chunker_a = get_chunker(
+            chunker_type=cfg_a.chunker_type,
+            chunk_size=cfg_a.chunk_size,
+            chunk_overlap=cfg_a.chunk_overlap,
         )
-        chunks_b = chunker_b.chunk(all_docs)
-        texts_b = [c.text for c in chunks_b]
+        pdf_files = sorted(Path(input_dir).glob("*.pdf"))
+        if not pdf_files:
+            console.print(
+                f"[bold red]Error:[/bold red] No PDF reports found in '{input_dir}'. "
+                f"If the vector database is already populated, run with [bold cyan]--skip-indexing[/bold cyan]."
+            )
+            raise typer.Exit(code=1)
+
+        with track_files(
+            pdf_files,
+            description="[bold cyan]Ingesting PDF reports for comparison[/bold cyan]",
+            no_progress=no_progress,
+        ) as tracker:
+            for pdf in pdf_files:
+                size_str = format_file_size(pdf.stat().st_size)
+                tracker.update_detail(f"File: {pdf.name} ({size_str})")
+                all_docs.extend(parser.parse(pdf))
+                tracker.advance(1)
+
+        chunks_a = chunker_a.chunk(all_docs)
+        texts_a = [c.text for c in chunks_a]
+
+        distinct_chunking = (
+            cfg_a.chunker_type != cfg_b.chunker_type
+            or cfg_a.chunk_size != cfg_b.chunk_size
+            or cfg_a.chunk_overlap != cfg_b.chunk_overlap
+        )
+        if distinct_chunking:
+            chunker_b = get_chunker(
+                chunker_type=cfg_b.chunker_type,
+                chunk_size=cfg_b.chunk_size,
+                chunk_overlap=cfg_b.chunk_overlap,
+            )
+            chunks_b = chunker_b.chunk(all_docs)
+            texts_b = [c.text for c in chunks_b]
+        else:
+            chunks_b = chunks_a
+            texts_b = texts_a
+
+        # Index Pipeline A
+        emb_a = pipe_a.embedding_model.embed_texts(texts_a)
+        pipe_a.vector_store.create_collection(
+            collection_name=cfg_a.collection_name, dimension=pipe_a.embedding_model.dimension
+        )
+        pipe_a.vector_store.add_chunks(
+            collection_name=cfg_a.collection_name, chunks=chunks_a, embeddings=emb_a
+        )
+
+        # Index Pipeline B
+        emb_b = pipe_b.embedding_model.embed_texts(texts_b)
+        pipe_b.vector_store.create_collection(
+            collection_name=cfg_b.collection_name, dimension=pipe_b.embedding_model.dimension
+        )
+        pipe_b.vector_store.add_chunks(
+            collection_name=cfg_b.collection_name, chunks=chunks_b, embeddings=emb_b
+        )
     else:
-        chunks_b = chunks_a
-        texts_b = texts_a
+        count_a = pipe_a.vector_store.count_chunks(cfg_a.collection_name)
+        if count_a == 0:
+            console.print(
+                f"[bold red]Error:[/bold red] Collection '[bold cyan]{cfg_a.collection_name}[/bold cyan]' "
+                f"for Pipeline A does not exist or has 0 chunks in vector store '{cfg_a.vector_store_type}'. "
+                f"Make sure documents were indexed beforehand (e.g. via 'bench-rag index')."
+            )
+            raise typer.Exit(code=1)
+
+        count_b = pipe_b.vector_store.count_chunks(cfg_b.collection_name)
+        if count_b == 0:
+            console.print(
+                f"[bold red]Error:[/bold red] Collection '[bold cyan]{cfg_b.collection_name}[/bold cyan]' "
+                f"for Pipeline B does not exist or has 0 chunks in vector store '{cfg_b.vector_store_type}'. "
+                f"Make sure documents were indexed beforehand (e.g. via 'bench-rag index')."
+            )
+            raise typer.Exit(code=1)
+
+        console.print(
+            f"[bold green]✓[/bold green] Skipping ingestion and indexing. "
+            f"Evaluating against existing collections: '[bold yellow]{cfg_a.collection_name}[/bold yellow]' "
+            f"([bold cyan]{count_a}[/bold cyan] chunks) and '[bold yellow]{cfg_b.collection_name}[/bold yellow]' "
+            f"([bold cyan]{count_b}[/bold cyan] chunks)."
+        )
 
     # Evaluate Pipeline A
-    pipe_a = build_pipeline_from_config(cfg_a)
-    emb_a = pipe_a.embedding_model.embed_texts(texts_a)
-    pipe_a.vector_store.create_collection(
-        collection_name=cfg_a.collection_name, dimension=pipe_a.embedding_model.dimension
-    )
-    pipe_a.vector_store.add_chunks(
-        collection_name=cfg_a.collection_name, chunks=chunks_a, embeddings=emb_a
-    )
     engine_a = StandardEvaluationEngine(
         judge_type=cfg_a.judge_type,
         judge_model=cfg_a.judge_model,
@@ -531,14 +620,6 @@ def compare(
         )
 
     # Evaluate Pipeline B
-    pipe_b = build_pipeline_from_config(cfg_b)
-    emb_b = pipe_b.embedding_model.embed_texts(texts_b)
-    pipe_b.vector_store.create_collection(
-        collection_name=cfg_b.collection_name, dimension=pipe_b.embedding_model.dimension
-    )
-    pipe_b.vector_store.add_chunks(
-        collection_name=cfg_b.collection_name, chunks=chunks_b, embeddings=emb_b
-    )
     engine_b = StandardEvaluationEngine(
         judge_type=cfg_b.judge_type,
         judge_model=cfg_b.judge_model,
@@ -578,16 +659,18 @@ def compare(
     generate_all_question_reports(summary_a, output_dir=q_dir_a)
     generate_all_question_reports(summary_b, output_dir=q_dir_b)
 
-    if distinct_chunking:
-        chunks_dir_a = out_p / "chunks" / summary_a.pipeline_name
-        chunks_dir_b = out_p / "chunks" / summary_b.pipeline_name
-        export_document_chunks(chunks=chunks_a, output_dir=chunks_dir_a, documents=all_docs)
-        export_document_chunks(chunks=chunks_b, output_dir=chunks_dir_b, documents=all_docs)
-        chunks_export_msg = f"{out_p / 'chunks'} (subdiretórios por arquitetura)"
-    else:
-        chunks_dir = out_p / "chunks"
-        export_document_chunks(chunks=chunks_a, output_dir=chunks_dir, documents=all_docs)
-        chunks_export_msg = str(chunks_dir)
+    chunks_export_msg = None
+    if chunks_a:
+        if distinct_chunking:
+            chunks_dir_a = out_p / "chunks" / summary_a.pipeline_name
+            chunks_dir_b = out_p / "chunks" / summary_b.pipeline_name
+            export_document_chunks(chunks=chunks_a, output_dir=chunks_dir_a, documents=all_docs)
+            export_document_chunks(chunks=chunks_b, output_dir=chunks_dir_b, documents=all_docs)
+            chunks_export_msg = f"{out_p / 'chunks'} (subdiretórios por arquitetura)"
+        else:
+            chunks_dir = out_p / "chunks"
+            export_document_chunks(chunks=chunks_a, output_dir=chunks_dir, documents=all_docs)
+            chunks_export_msg = str(chunks_dir)
 
     # Display comparison table
     t = Table(title="Architecture Comparison: Standard Dense RAG vs. Hybrid RAG")
@@ -628,9 +711,10 @@ def compare(
     console.print(
         f"[bold green]✓[/bold green] Individual question reports written to: [bold cyan]{out_p / 'questions'}[/bold cyan]"
     )
-    console.print(
-        f"[bold green]✓[/bold green] Document chunks exported to: [bold cyan]{chunks_export_msg}[/bold cyan]"
-    )
+    if chunks_export_msg:
+        console.print(
+            f"[bold green]✓[/bold green] Document chunks exported to: [bold cyan]{chunks_export_msg}[/bold cyan]"
+        )
 
 
 if __name__ == "__main__":

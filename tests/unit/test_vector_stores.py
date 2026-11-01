@@ -43,7 +43,10 @@ def test_memory_vector_store_cosine(sample_chunks: list[Chunk]):
         [0.0, 1.0, 0.0],
         [0.0, 0.0, 1.0],
     ]
+    assert store.count_chunks("test_col") == 0
+    assert store.count_chunks("non_existent") == 0
     store.add_chunks("test_col", sample_chunks, embeddings)
+    assert store.count_chunks("test_col") == 3
 
     # Search with vector aligned with c1
     results = store.search("test_col", query_vector=[1.0, 0.0, 0.0], top_k=2)
@@ -229,3 +232,24 @@ def test_vector_stores_add_chunks_progress_callback(sample_chunks: list[Chunk]):
     )
     assert mock_client.upsert.called
     assert qdrant_calls == [(len(sample_chunks), len(sample_chunks))]
+
+
+def test_qdrant_vector_store_count_chunks():
+    # Collection exists and has count
+    mock_client = MagicMock()
+    mock_client.collection_exists.return_value = True
+    mock_client.count.return_value.count = 42
+
+    store = QdrantVectorStore(client=mock_client)
+    assert store.count_chunks("test_col") == 42
+    mock_client.collection_exists.assert_called_once_with("test_col")
+    mock_client.count.assert_called_once_with(collection_name="test_col")
+
+    # Collection does not exist
+    mock_client.collection_exists.return_value = False
+    assert store.count_chunks("non_existent_col") == 0
+
+    # Count raises error
+    mock_client.collection_exists.return_value = True
+    mock_client.count.side_effect = RuntimeError("Connection error")
+    assert store.count_chunks("test_col") == 0

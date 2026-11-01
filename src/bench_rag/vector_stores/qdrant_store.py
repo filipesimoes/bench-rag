@@ -209,3 +209,14 @@ class QdrantVectorStore(VectorStore):
                 break
 
         return chunks
+
+    def count_chunks(self, collection_name: str) -> int:
+        if hasattr(self.client, "collection_exists") and not self.client.collection_exists(
+            collection_name
+        ):
+            return 0
+        try:
+            res = self.client.count(collection_name=collection_name)
+            return res.count
+        except Exception:  # noqa: BLE001
+            return 0

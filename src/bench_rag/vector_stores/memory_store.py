@@ -124,3 +124,8 @@ class MemoryVectorStore(VectorStore):
         if collection_name not in self._collections:
             return []
         return list(self._collections[collection_name]["chunks"])
+
+    def count_chunks(self, collection_name: str) -> int:
+        if collection_name not in self._collections:
+            return 0
+        return len(self._collections[collection_name]["chunks"])
