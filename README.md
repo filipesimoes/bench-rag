@@ -19,7 +19,7 @@ The system adheres to Clean Architecture and Dependency Inversion principles. Co
 - `RAGPipeline`: End-to-end coordinator supporting **Standard Dense RAG** and **Hybrid RAG** (Dense Vector + BM25 Lexical with Reciprocal Rank Fusion).
 - `EvaluationEngine`: Computes multi-dimensional metrics aggregated across investigative typologies ($T1, T2, T3$) and complexity levels ($C1, C2, C3$).
 
-```
+```text
                  Forensic Police Inquiry Reports (PDF)
                                 │
                                 ▼
@@ -84,7 +84,7 @@ You can configure distinct endpoints and credentials for each component in `.env
 - **Global Fallback**: `OPENAI_BASE_URL`, `OPENAI_API_KEY`
 
 > [!TIP]
-> For an exhaustive reference of all pipeline options, parameter descriptions, architectural variants, and ready-to-use YAML recipes, consult the [Pipeline Configuration Guide](file:///home/filipe/projetos/bench-rag/docs/pipeline_configuration.md).
+> For an exhaustive reference of all pipeline options, parameter descriptions, architectural variants, and ready-to-use YAML recipes, consult the [Pipeline Configuration Guide](docs/pipeline_configuration.md).
 
 ### 2. Build Containers
 Build the multi-stage Docker development container:
@@ -155,6 +155,8 @@ Outputs:
 Execute unit and integration tests inside Docker:
 ```bash
 docker compose run --rm app pytest -v --cov=src/bench_rag
+```
+
 ---
 
 ## Privacy, Confidentiality & Synthetic Testing Policy
@@ -165,13 +167,13 @@ docker compose run --rm app pytest -v --cov=src/bench_rag
 > - All unit test mocks and fixtures must use synthetic placeholders (e.g., `SERVIDOR TESTE`, dummy IDs `0000...`).
 > - Integration tests validating real files must test structural and quantitative invariants without hardcoded real-world entity assertions.
 > - Automated enforcement is built into `tests/unit/test_privacy_compliance.py`.
-> - For full governance rules, see [AGENTS.md](file:///home/filipe/projetos/bench-rag/AGENTS.md) and [docs/privacy_guidelines.md](file:///home/filipe/projetos/bench-rag/docs/privacy_guidelines.md).
+> - For full governance rules, see [AGENTS.md](AGENTS.md) and [docs/privacy_guidelines.md](docs/privacy_guidelines.md).
 
 ---
 
 ## Project Structure
 
-```
+```text
 bench-rag/
 ├── Dockerfile                  # Multi-stage Dockerfile (development, production)
 ├── docker-compose.yml          # App & Qdrant vector database orchestration

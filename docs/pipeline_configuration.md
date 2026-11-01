@@ -2,7 +2,7 @@
 
 This document is the authoritative technical reference for configuring, customizing, and executing Retrieval-Augmented Generation (RAG) pipelines in the **Modular RAG Evaluation Framework for Criminal Investigation Reports** (`bench-rag`).
 
-For mathematical definitions of evaluation metrics, forensic taxonomies ($T1, T2, T3$), and complexity levels ($C1, C2, C3$), see [docs/methodology.md](file:///home/filipe/projetos/bench-rag/docs/methodology.md).
+For mathematical definitions of evaluation metrics, forensic taxonomies ($T1, T2, T3$), and complexity levels ($C1, C2, C3$), see [docs/methodology.md](methodology.md).
 
 ---
 
@@ -10,7 +10,7 @@ For mathematical definitions of evaluation metrics, forensic taxonomies ($T1, T2
 
 The framework is built upon Clean Architecture and Dependency Inversion. RAG pipelines are declared declaratively via YAML configuration files and instantiated through dynamic factories:
 
-```
+```text
                   ┌───────────────────────────────┐
                   │    Pipeline YAML Config File  │
                   └──────────────┬────────────────┘
@@ -63,7 +63,7 @@ The framework is built upon Clean Architecture and Dependency Inversion. RAG pip
 
 `bench-rag` utilizes a 4-tier precedence model to resolve endpoints, models, and credentials:
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │ 1. Pipeline YAML Override (per-pipeline model/endpoint)          │
 │    (e.g., generator_base_url, generator_model)                 │
@@ -123,32 +123,32 @@ All options configured in pipeline YAML files map directly to the `PipelineConfi
 | `pipeline_type` | `"standard"` \| `"hybrid"` | `"standard"` | Core retrieval architecture: <br>• `"standard"`: Dense semantic vector Top-K retrieval.<br>• `"hybrid"`: Dual dense vector + BM25 Okapi lexical search merged via Reciprocal Rank Fusion (RRF). | Only `"standard"` or `"hybrid"` accepted. |
 | `parser_type` | `"pymupdf"` \| `"pdfplumber"` | `"pymupdf"` | PDF parsing engine: <br>• `"pymupdf"`: High-speed native parsing (PyMuPDF) for plain-text extraction.<br>• `"pdfplumber"`: Layout-aware parser that formats tables into structured `[TABLE DATA]` markdown blocks. | Only `"pymupdf"` or `"pdfplumber"` accepted. |
 | `chunker_type` | `"recursive"` \| `"token"` | `"recursive"` | Text splitting strategy: <br>• `"recursive"`: Hierarchical splitting by `["\n\n", "\n", ". ", " ", ""]` to preserve sentence and paragraph cohesion.<br>• `"token"`: Sliding token/word window splitting. | Only `"recursive"` or `"token"` accepted. |
-| `chunk_size` | `int` | `1000` | Target chunk size. In characters for `recursive`, or word/token count for `token`. | Must be $> 0$ and strictly $> chunk\_overlap$. |
-| `chunk_overlap` | `int` | `200` | Number of characters or tokens shared between consecutive chunks to preserve contextual continuity at boundaries. | Must be $\ge 0$ and strictly $< chunk\_size$. Raises `ValueError` if $\ge chunk\_size$. |
+| `chunk_size` | `int` | `1000` | Target chunk size. In characters for `recursive`, or word/token count for `token`. | Must be > 0 and strictly > chunk_overlap. |
+| `chunk_overlap` | `int` | `200` | Number of characters or tokens shared between consecutive chunks to preserve contextual continuity at boundaries. | Must be >= 0 and strictly < chunk_size. Raises `ValueError` if >= chunk_size. |
 | `embedding_type` | `"openai"` \| `"mock"` | `"mock"` | Embedding provider: <br>• `"mock"`: Deterministic MD5-based pseudo-embeddings for offline testing and zero API costs.<br>• `"openai"`: Remote embedding endpoint (`/v1/embeddings`) compatible with OpenAI, Ollama, vLLM, and LiteLLM. | Only `"openai"` or `"mock"` accepted. |
 | `vector_store_type`| `"qdrant"` \| `"memory"` | `"memory"` | Vector storage engine: <br>• `"memory"`: In-memory NumPy vector store. Non-persistent, ideal for fast unit/integration tests.<br>• `"qdrant"`: Distributed, persistent Qdrant vector database service running in Docker. | Only `"qdrant"` or `"memory"` accepted. |
 | `generator_type` | `"openai"` \| `"mock"` | `"mock"` | Generation LLM provider: <br>• `"mock"`: Deterministic offline response generator.<br>• `"openai"`: Remote chat completion endpoint (`/v1/chat/completions`). | Only `"openai"` or `"mock"` accepted. |
 | `judge_type` | `"openai"` \| `"mock"` | `"mock"` | LLM-as-a-Judge evaluation engine: <br>• `"mock"`: Heuristic lexical/token overlap scoring.<br>• `"openai"`: Multi-criteria forensic evaluation (Faithfulness, Answer Relevance, Context Recall) returning structured JSON. | Only `"openai"` or `"mock"` accepted. |
-| `top_k` | `int` | `5` | Number of context chunks retrieved from the vector store and injected into the LLM synthesis prompt. | Must be $\ge 1$. |
+| `top_k` | `int` | `5` | Number of context chunks retrieved from the vector store and injected into the LLM synthesis prompt. | Must be >= 1. |
 | `collection_name` | `str` | `"police_reports"` | Target collection/index name in the vector store. | Valid alphanumeric / underscore identifier. |
 | `distance_metric` | `"cosine"` \| `"euclidean"` \| `"dot"` | `"cosine"` | Distance metric for vector similarity calculation in Qdrant and Memory stores. | Only `"cosine"`, `"euclidean"`, or `"dot"` accepted. |
-| `rrf_k` | `int` | `60` | Rank smoothing constant ($k_0$) used in Reciprocal Rank Fusion formula: $\text{RRF}(c) = \sum \frac{w}{k_0 + r(c)}$. High values reduce the penalty for lower ranks. *(Hybrid only)*. | Must be $> 0$. Default is standard $60$. |
-| `bm25_weight` | `float` | `0.5` | Weight multiplier applied to lexical BM25 reciprocal ranks in RRF fusion. *(Hybrid only)*. | Must be $\ge 0.0$. |
-| `dense_weight` | `float` | `0.5` | Weight multiplier applied to dense vector reciprocal ranks in RRF fusion. *(Hybrid only)*. | Must be $\ge 0.0$. |
-| `generator_base_url` | `str \| None` | `null` | Custom base URL override for the Generator LLM (e.g. `"http://host.docker.internal:11434/v1"`). | Valid HTTP/HTTPS URL or `null`. |
-| `generator_model` | `str \| None` | `null` | Model identifier override for the Generator LLM (e.g. `"gpt-4o"` or `"llama3.1:8b"`). | String identifier or `null`. |
-| `generator_enable_thinking` | `bool \| None` | `null` | Controls reasoning/thinking in OpenAI/vLLM generators. When `false`, suppresses `<think>` blocks on reasoning models. If `null`, falls back to `.env` or system default. | `true`, `false`, or `null`. |
+| `rrf_k` | `int` | `60` | Rank smoothing constant ($k_0$) used in Reciprocal Rank Fusion formula: $\text{RRF}(c) = \sum \frac{w}{k_0 + r(c)}$. High values reduce the penalty for lower ranks. *(Hybrid only)*. | Must be > 0. Default is standard 60. |
+| `bm25_weight` | `float` | `0.5` | Weight multiplier applied to lexical BM25 reciprocal ranks in RRF fusion. *(Hybrid only)*. | Must be >= 0.0. |
+| `dense_weight` | `float` | `0.5` | Weight multiplier applied to dense vector reciprocal ranks in RRF fusion. *(Hybrid only)*. | Must be >= 0.0. |
+| `generator_base_url` | `str` \| `None` | `null` | Custom base URL override for the Generator LLM (e.g. `"http://host.docker.internal:11434/v1"`). | Valid HTTP/HTTPS URL or `null`. |
+| `generator_model` | `str` \| `None` | `null` | Model identifier override for the Generator LLM (e.g. `"gpt-4o"` or `"llama3.1:8b"`). | String identifier or `null`. |
+| `generator_enable_thinking` | `bool` \| `None` | `null` | Controls reasoning/thinking in OpenAI/vLLM generators. When `false`, suppresses `<think>` blocks on reasoning models. If `null`, falls back to `.env` or system default. | `true`, `false`, or `null`. |
 | `generator_dialect` | `"auto"` \| `"vllm"` \| `"gemini"` \| `"openai"` | `"auto"` | API dialect for Generator LLM. Controls whether `reasoning_effort` (Gemini, OpenAI) or `chat_template_kwargs` (vLLM) is used. When `"auto"`, infers from `generator_base_url`. | `"auto"`, `"vllm"`, `"gemini"`, `"openai"`. |
-| `judge_base_url` | `str \| None` | `null` | Custom base URL override for the LLM Judge (enables using an independent, high-capacity auditing model). | Valid HTTP/HTTPS URL or `null`. |
-| `judge_model` | `str \| None` | `null` | Model identifier override for the LLM Judge (e.g. `"gpt-4o"`). | String identifier or `null`. |
-| `judge_enable_thinking` | `bool \| None` | `null` | Controls reasoning/thinking for the Judge LLM. When `null` (default), preserves compatibility with endpoints like Google Gemini that reject extra fields. | `true`, `false`, or `null`. |
+| `judge_base_url` | `str` \| `None` | `null` | Custom base URL override for the LLM Judge (enables using an independent, high-capacity auditing model). | Valid HTTP/HTTPS URL or `null`. |
+| `judge_model` | `str` \| `None` | `null` | Model identifier override for the LLM Judge (e.g. `"gpt-4o"`). | String identifier or `null`. |
+| `judge_enable_thinking` | `bool` \| `None` | `null` | Controls reasoning/thinking for the Judge LLM. When `null` (default), preserves compatibility with endpoints like Google Gemini that reject extra fields. | `true`, `false`, or `null`. |
 | `judge_dialect` | `"auto"` \| `"vllm"` \| `"gemini"` \| `"openai"` | `"auto"` | API dialect for Judge LLM. When `"auto"`, infers from `judge_base_url` (e.g. Google Gemini endpoint uses `reasoning_effort`). | `"auto"`, `"vllm"`, `"gemini"`, `"openai"`. |
-| `embedding_base_url`| `str \| None` | `null` | Custom base URL override for the Embedding endpoint (e.g. Text Embeddings Inference or Ollama). | Valid HTTP/HTTPS URL or `null`. |
-| `embedding_model` | `str \| None` | `null` | Model identifier override for Embeddings (e.g. `"text-embedding-3-large"` or `"nomic-embed-text"`). | String identifier or `null`. |
+| `embedding_base_url`| `str` \| `None` | `null` | Custom base URL override for the Embedding endpoint (e.g. Text Embeddings Inference or Ollama). | Valid HTTP/HTTPS URL or `null`. |
+| `embedding_model` | `str` \| `None` | `null` | Model identifier override for Embeddings (e.g. `"text-embedding-3-large"` or `"nomic-embed-text"`). | String identifier or `null`. |
 | `reranker_type` | `"none"` \| `"mock"` \| `"http"` \| `"vllm"` | `"none"` | Second-stage cross-encoder re-ranking engine: <br>• `"none"`: Disabled (direct passthrough).<br>• `"mock"`: Deterministic term-overlap mock for fast tests.<br>• `"http"` / `"vllm"`: Universal `/v1/rerank` client (vLLM, TEI, Jina, Cohere). | Only `"none"`, `"mock"`, `"http"`, `"vllm"`, `"tei"`, `"cohere"`, `"jina"` accepted. |
-| `reranker_model` | `str \| None` | `null` | Model identifier for the reranker (e.g. `"BAAI/bge-reranker-v2-m3"`). Falls back to `.env` or system default. | String identifier or `null`. |
-| `reranker_base_url` | `str \| None` | `null` | Custom base URL for the rerank endpoint (e.g. `"http://host.docker.internal:8000/v1"`). | Valid HTTP/HTTPS URL or `null`. |
-| `rerank_fetch_k` | `int` | `20` | Number of candidate chunks retrieved in the first stage (dense/hybrid) to be scored by the reranker. | Must be $\ge 1$ (internally enforced as $\ge top\_k$). |
+| `reranker_model` | `str` \| `None` | `null` | Model identifier for the reranker (e.g. `"BAAI/bge-reranker-v2-m3"`). Falls back to `.env` or system default. | String identifier or `null`. |
+| `reranker_base_url` | `str` \| `None` | `null` | Custom base URL for the rerank endpoint (e.g. `"http://host.docker.internal:8000/v1"`). | Valid HTTP/HTTPS URL or `null`. |
+| `rerank_fetch_k` | `int` | `20` | Number of candidate chunks retrieved in the first stage (dense/hybrid) to be scored by the reranker. | Must be >= 1 (internally enforced as >= top_k). |
 
 ---
 
@@ -180,8 +180,8 @@ The relationship between `top_k` and `rerank_fetch_k` establishes the **Two-Stag
 | :--- | :---: | :--- | :--- | :--- |
 | **Standard Dense RAG** | **No** (`reranker_type: "none"`) | **Ignored** | Directly dictates VectorStore retrieval and final LLM context size | $k \to k$ (Single-stage vector search) |
 | **Standard Dense RAG** | **Yes** (`reranker_type: "vllm"` / `"mock"`) | Sets the number of nearest neighbors retrieved by vector search | Sets the final cutoff after cross-attention re-ranking | $K_{\text{fetch}} \to k$ (Vector search $\to$ Reranker) |
-| **Hybrid RAG** | **No** (`reranker_type: "none"`) | **Ignored** | Governs the initial dual fetch ($2 \times k$) and cuts the RRF output directly | $(2k \text{ dense} + 2k \text{ BM25}) \xrightarrow{\text{RRF}} k$ |
-| **Hybrid RAG** | **Yes** (`reranker_type: "vllm"` / `"mock"`) | Sets the candidate pool size selected from RRF passed to the reranker | Sets the final cutoff after cross-attention re-ranking | $(K_{\text{fetch}} \text{ dense} + K_{\text{fetch}} \text{ BM25}) \xrightarrow{\text{RRF}} K_{\text{fetch}} \xrightarrow{\text{Reranker}} k$ |
+| **Hybrid RAG** | **No** (`reranker_type: "none"`) | **Ignored** | Governs the initial dual fetch ($2 \times k$) and cuts the RRF output directly | (2k dense + 2k BM25) $\to$ RRF $\to k$ |
+| **Hybrid RAG** | **Yes** (`reranker_type: "vllm"` / `"mock"`) | Sets the candidate pool size selected from RRF passed to the reranker | Sets the final cutoff after cross-attention re-ranking | ($K_{\text{fetch}}$ dense + $K_{\text{fetch}}$ BM25) $\to$ RRF $\to K_{\text{fetch}} \to$ Reranker $\to k$ |
 
 #### Execution Flow Breakdown
 
@@ -452,5 +452,5 @@ docker compose run --rm app python -m bench_rag.cli compare \
 
 ## 7. Related Documentation
 
-- [Methodology & Metric Formulations](file:///home/filipe/projetos/bench-rag/docs/methodology.md): Detailed mathematical definitions of Precision@K, Recall@K, Hit Rate, MRR, ROUGE-L, Token F1, and LLM-as-a-Judge criteria.
-- [Project Readme](file:///home/filipe/projetos/bench-rag/README.md): Quickstart guide, Docker setup, and project structure.
+- [Methodology & Metric Formulations](methodology.md): Detailed mathematical definitions of Precision@K, Recall@K, Hit Rate, MRR, ROUGE-L, Token F1, and LLM-as-a-Judge criteria.
+- [Project Readme](../README.md): Quickstart guide, Docker setup, and project structure.
