@@ -135,7 +135,7 @@ where $k_0 = 60$ is the standard smoothing constant, and $w_{\text{dense}} = w_{
 ### 3.3 Two-Stage Retrieval with Cross-Encoder Reranking (Optional)
 To overcome the bi-encoder semantic compression bottleneck and the purely positional heuristic of RRF, both Standard and Hybrid pipelines optionally execute a second-stage cross-encoder re-ranking pass:
 
-1. **Stage 1 (Coarse Retrieval)**: Retrieves an expanded candidate pool of size $K_{\text{fetch}} = \max(\text{rerank\_fetch\_k}, k)$ (typically 20-30 chunks) via dense vector similarity or hybrid RRF fusion.
+1. **Stage 1 (Coarse Retrieval)**: Retrieves an expanded candidate pool of size $K_{\text{fetch}} = \max(k_{\text{fetch}}, k)$ (typically 20-30 chunks, configured via `rerank_fetch_k`) via dense vector similarity or hybrid RRF fusion.
 2. **Stage 2 (Fine Re-ranking)**: The candidate chunks and query $q$ are jointly evaluated with full cross-attention by a dedicated reranker model (such as `BAAI/bge-reranker-v2-m3` running on vLLM):
 
 $$
@@ -149,7 +149,7 @@ $$
 | Architectural Mode | Reranker State | Stage 1 Candidate Pool ($K_{\text{fetch}}$) | Stage 2 / Final Context Size ($k$) |
 | :--- | :---: | :--- | :--- |
 | **Standard Dense** | **Disabled** | $K_{\text{fetch}} = k$ (e.g. 5) | $k$ (direct vector similarity slice) |
-| **Standard Dense** | **Enabled** | $`K_{\text{fetch}} = \max(\text{rerank\_fetch\_k}, k)`$ (e.g. 20) | $k$ (top-$k$ cross-encoder scores) |
+| **Standard Dense** | **Enabled** | $K_{\text{fetch}} = \max(k_{\text{fetch}}, k)$ (e.g. 20 via `rerank_fetch_k`) | $k$ (top-$k$ cross-encoder scores) |
 | **Hybrid RRF** | **Disabled** | $\max(2k, 10)$ dense + $\max(2k, 10)$ BM25 | $k$ (direct RRF reciprocal rank slice) |
 | **Hybrid RRF** | **Enabled** | ($K_{\text{fetch}}$ dense + $K_{\text{fetch}}$ BM25) $\to$ RRF $\to K_{\text{fetch}}$ | $k$ (top-$k$ cross-encoder scores) |
 

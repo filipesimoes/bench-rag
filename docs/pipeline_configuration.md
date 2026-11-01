@@ -162,7 +162,7 @@ All options configured in pipeline YAML files map directly to the `PipelineConfi
   - **Weakness**: May struggle with exact alphanumeric strings, tax IDs, or rare surnames if not explicitly emphasized in the dense embedding space.
 
 - **Hybrid RAG (`pipeline_type: hybrid`)**:
-  - Executes dual retrieval: fetches $2 \times \text{top\_k}$ candidates from dense vector search and $2 \times \text{top\_k}$ candidates from BM25 Okapi lexical index.
+  - Executes dual retrieval: fetches $2 \times k$ candidates from dense vector search and $2 \times k$ candidates from BM25 Okapi lexical index (where $k$ is `top_k`).
   - Combines ranks via Reciprocal Rank Fusion:
     $$\text{Score}_{\text{RRF}}(c) = \frac{w_{\text{dense}}}{k_0 + r_{\text{dense}}(c)} + \frac{w_{\text{bm25}}}{k_0 + r_{\text{bm25}}(c)}$$
   - **Best suited for**: Police and criminal reports requiring precision on exact identifiers (CNPJ, CPF, vehicle license plates, bank wire numbers, specific dates) combined with semantic reasoning.
@@ -198,14 +198,14 @@ The relationship between `top_k` and `rerank_fetch_k` establishes the **Two-Stag
 
 3. **Hybrid RAG without Rerank**:
    - `candidate_pool_size = top_k` (e.g., 5).
-   - Dual retrieval: fetches $\max(2 \times \text{top\_k}, 10)$ candidates from dense vector search and BM25 search.
+   - Dual retrieval: fetches $\max(2k, 10)$ candidates from dense vector search and BM25 search (where $k$ is `top_k`).
    - Reciprocal Rank Fusion (RRF) scores the union of candidates.
    - The top `top_k` (5) chunks from RRF are sliced directly: `final_results = rrf_scores[:top_k]`.
    - `rerank_fetch_k` is bypassed entirely.
 
 4. **Hybrid RAG with Rerank**:
    - `candidate_pool_size = max(rerank_fetch_k, top_k)` (e.g., 20).
-   - Dual retrieval: fetches $\max(\text{candidate\_pool\_size}, 2 \times \text{top\_k}, 10)$ (e.g., 20) candidates from dense vector search and 20 from BM25.
+   - Dual retrieval: fetches $\max(K_{\text{pool}}, 2k, 10)$ (e.g., 20) candidates from dense vector search and 20 from BM25 (where $K_{\text{pool}}$ is `candidate_pool_size` and $k$ is `top_k`).
    - Reciprocal Rank Fusion (RRF) scores all candidates and selects the top `candidate_pool_size` (20) chunks.
    - Stage 2: `Reranker.rerank(results=20, top_k=5)` evaluates the 20 RRF winners with the cross-encoder model (e.g. `BAAI/bge-reranker-v2-m3` on vLLM), delivering the top 5 chunks to the prompt.
 
