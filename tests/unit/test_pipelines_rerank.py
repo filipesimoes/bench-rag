@@ -189,8 +189,8 @@ def test_concise_prompt_construction_and_system_prompt():
     # 1. Check default system_prompt rules
     assert "Rules for your response:" in pipe.system_prompt
     assert "1 to 2 sentences" in pipe.system_prompt
-    assert "[Fontes: <DOC_ID_1>, <DOC_ID_2>]" in pipe.system_prompt
-    assert "[Sources: <DOC_ID_1>, <DOC_ID_2>]" in pipe.system_prompt
+    assert "Output Schema:" in pipe.system_prompt
+    assert '"citations":' in pipe.system_prompt
 
     # 2. Query and inspect constructed user prompt
     res = pipe.query("Quem é o beneficiário?")
@@ -199,10 +199,11 @@ def test_concise_prompt_construction_and_system_prompt():
         "Instructions: Answer the question above directly in 1 to 2 sentences"
         in captured_prompts["prompt"]
     )
-    assert "Append citation brackets at the end" in captured_prompts["prompt"]
-    assert captured_prompts["prompt"].endswith("Answer:")
+    assert "JSON object containing 'answer' and 'citations'" in captured_prompts["prompt"]
+    assert captured_prompts["prompt"].endswith("JSON Response:")
     assert captured_prompts["system_prompt"] == pipe.system_prompt
-    assert "[Fontes: IP_007_2023]" in res.answer
+    assert res.answer == "Carlos Eduardo é o beneficiário."
+    assert "IP_007_2023" in res.cited_inquiries
 
 
 def test_build_pipeline_from_config_system_prompt_forwarding():

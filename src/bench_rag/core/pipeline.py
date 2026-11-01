@@ -16,6 +16,8 @@ class RAGResponse:
     referenced_inquiries: list[str]  # Normalized document identifiers (e.g. ['IP_001_2023'])
     latency_ms: float
     pipeline_name: str
+    cited_inquiries: list[str] = field(default_factory=list)  # Document identifiers explicitly cited by generator
+    raw_answer: str | None = None  # Raw unparsed generator completion
     metadata: dict[str, Any] = field(default_factory=dict)
     prompt: str | None = None
     system_prompt: str | None = None

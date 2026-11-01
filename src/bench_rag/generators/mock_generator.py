@@ -45,19 +45,40 @@ class MockGeneratorLLM(GeneratorLLM):
             or "pergunta" in prompt.lower()
         )
 
-        # Synthesize a concise deterministic answer
-        if cited_docs:
-            citation_str = ", ".join(cited_docs)
-            sources_tag = (
-                f"[Fontes: {citation_str}]" if is_portuguese else f"[Sources: {citation_str}]"
-            )
-            answer = f"{informative_text} {sources_tag}"
-        else:
-            answer = (
+        # Check if structured JSON response is requested
+        wants_json = (
+            "json" in prompt.lower()
+            or (system_prompt and "json" in system_prompt.lower())
+            or "schema" in prompt.lower()
+            or (system_prompt and "schema" in system_prompt.lower())
+        )
+
+        base_answer = (
+            informative_text
+            if cited_docs
+            else (
                 "A informação não consta nas evidências fornecidas."
                 if is_portuguese
                 else "The information is not present in the provided records."
             )
+        )
+
+        if wants_json:
+            import json
+
+            answer = json.dumps(
+                {"answer": base_answer, "citations": cited_docs},
+                ensure_ascii=False,
+            )
+        else:
+            if cited_docs:
+                citation_str = ", ".join(cited_docs)
+                sources_tag = (
+                    f"[Fontes: {citation_str}]" if is_portuguese else f"[Sources: {citation_str}]"
+                )
+                answer = f"{base_answer} {sources_tag}"
+            else:
+                answer = base_answer
 
         return GenerationResult(
             answer=answer,

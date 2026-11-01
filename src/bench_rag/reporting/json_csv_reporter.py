@@ -31,10 +31,14 @@ def export_samples_csv(summary: EvaluationSummary, output_path: Path | str) -> N
         "question",
         "reference_inquiries",
         "retrieved_inquiries",
+        "cited_inquiries",
         "precision_at_k",
         "recall_at_k",
         "hit_rate",
         "mrr",
+        "citation_precision",
+        "citation_recall",
+        "citation_hallucination_rate",
         "rouge_l",
         "token_f1",
         "bleu_4",
@@ -51,6 +55,7 @@ def export_samples_csv(summary: EvaluationSummary, output_path: Path | str) -> N
         writer.writeheader()
 
         for s in summary.samples:
+            cit = s.citation
             writer.writerow(
                 {
                     "id": s.item.id,
@@ -59,10 +64,14 @@ def export_samples_csv(summary: EvaluationSummary, output_path: Path | str) -> N
                     "question": s.item.question,
                     "reference_inquiries": ";".join(s.item.inquiry_references),
                     "retrieved_inquiries": ";".join(s.response.referenced_inquiries),
+                    "cited_inquiries": ";".join(s.response.cited_inquiries),
                     "precision_at_k": s.retrieval.precision_at_k,
                     "recall_at_k": s.retrieval.recall_at_k,
                     "hit_rate": s.retrieval.hit_rate,
                     "mrr": s.retrieval.mrr,
+                    "citation_precision": cit.precision if cit else 0.0,
+                    "citation_recall": cit.recall if cit else 0.0,
+                    "citation_hallucination_rate": cit.hallucination_rate if cit else 0.0,
                     "rouge_l": s.lexical.rouge_l,
                     "token_f1": s.lexical.token_f1,
                     "bleu_4": s.lexical.bleu_4,

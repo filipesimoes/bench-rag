@@ -64,6 +64,7 @@ class PipelineConfig(BaseModel):
 
     # Optional prompt customization
     system_prompt: str | None = None
+    generator_response_format: str | None = None
 
 
 class Settings(BaseSettings):
@@ -87,6 +88,7 @@ class Settings(BaseSettings):
     generator_temperature: float = 0.0
     generator_enable_thinking: bool | None = None
     generator_dialect: Literal["auto", "vllm", "gemini", "openai"] = "auto"
+    generator_response_format: str | None = "json_object"
 
     # Judge LLM Endpoint
     judge_base_url: str | None = None

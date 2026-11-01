@@ -24,6 +24,7 @@ class OpenAIGeneratorLLM(GeneratorLLM):
         timeout: float = 60.0,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        response_format: dict[str, Any] | str | None | object = _UNSET,
     ):
         self.model = model or settings.generator_model
         resolved_url = base_url or settings.effective_generator_base_url
@@ -36,6 +37,15 @@ class OpenAIGeneratorLLM(GeneratorLLM):
         self.timeout = timeout
         self.max_tokens = max_tokens
         self.temperature = temperature
+        configured_rf = (
+            getattr(settings, "generator_response_format", "json_object")
+            if response_format is _UNSET
+            else response_format
+        )
+        if isinstance(configured_rf, str):
+            self.response_format = {"type": configured_rf} if configured_rf else None
+        else:
+            self.response_format = configured_rf
 
     def _resolve_dialect(self) -> str:
         """Resolve effective API dialect (auto, vllm, gemini, or openai)."""
@@ -54,6 +64,7 @@ class OpenAIGeneratorLLM(GeneratorLLM):
         system_prompt: str | None = None,
         temperature: float | None = None,
         max_tokens: int | None = None,
+        response_format: dict[str, Any] | str | None | object = _UNSET,
     ) -> GenerationResult:
         effective_max_tokens = (
             max_tokens
@@ -67,6 +78,11 @@ class OpenAIGeneratorLLM(GeneratorLLM):
                 self.temperature if self.temperature is not None else settings.generator_temperature
             )
         )
+        effective_rf = (
+            self.response_format if response_format is _UNSET else response_format
+        )
+        if isinstance(effective_rf, str):
+            effective_rf = {"type": effective_rf} if effective_rf else None
 
         url = f"{self.base_url}/chat/completions"
         headers = {
@@ -85,6 +101,8 @@ class OpenAIGeneratorLLM(GeneratorLLM):
             "temperature": effective_temperature,
             "max_tokens": effective_max_tokens,
         }
+        if effective_rf is not None:
+            payload["response_format"] = effective_rf
         if self.enable_thinking is not None:
             effective_dialect = self._resolve_dialect()
             if effective_dialect in ("gemini", "openai"):

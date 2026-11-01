@@ -21,13 +21,14 @@ def _format_aggregate_table(title: str, aggregates: dict[str, TaxonomyAggregate]
     lines = [
         f"### {title}",
         "",
-        "| Category | Samples | Precision@K | Recall@K | Hit Rate | MRR | ROUGE-L | Token F1 | Faithfulness | Relevance | Context Recall | Latency (ms) |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "| Category | Samples | Precision@K | Recall@K | Hit Rate | MRR | Cit. Prec. | Cit. Rec. | ROUGE-L | Token F1 | Faithfulness | Relevance | Context Recall | Latency (ms) |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for cat, agg in aggregates.items():
         lines.append(
             f"| **{cat}** | {agg.sample_count} | {agg.mean_precision_at_k:.4f} | {agg.mean_recall_at_k:.4f} | "
-            f"{agg.mean_hit_rate:.4f} | {agg.mean_mrr:.4f} | {agg.mean_rouge_l:.4f} | {agg.mean_token_f1:.4f} | "
+            f"{agg.mean_hit_rate:.4f} | {agg.mean_mrr:.4f} | {agg.mean_citation_precision:.4f} | {agg.mean_citation_recall:.4f} | "
+            f"{agg.mean_rouge_l:.4f} | {agg.mean_token_f1:.4f} | "
             f"{agg.mean_faithfulness:.4f} | {agg.mean_answer_relevance:.4f} | {agg.mean_context_recall:.4f} | "
             f"{agg.mean_latency_ms:.1f} |"
         )
@@ -50,6 +51,8 @@ def generate_markdown_report(
         f"- **Total Evaluated Benchmark Samples**: {summary.total_samples}",
         f"- **Mean Retrieval Recall@K**: {ov.mean_recall_at_k:.4f}",
         f"- **Mean Retrieval MRR**: {ov.mean_mrr:.4f}",
+        f"- **Mean Citation Precision**: {ov.mean_citation_precision:.4f}",
+        f"- **Mean Citation Recall**: {ov.mean_citation_recall:.4f}",
         f"- **Mean Answer Faithfulness (LLM Judge)**: {ov.mean_faithfulness:.4f}",
         f"- **Mean Answer Relevance (LLM Judge)**: {ov.mean_answer_relevance:.4f}",
         f"- **Mean Latency**: {ov.mean_latency_ms:.1f} ms",
@@ -62,6 +65,9 @@ def generate_markdown_report(
         f"| Retrieval | Recall@K | {ov.mean_recall_at_k:.4f} |",
         f"| Retrieval | Hit Rate@K | {ov.mean_hit_rate:.4f} |",
         f"| Retrieval | Mean Reciprocal Rank (MRR) | {ov.mean_mrr:.4f} |",
+        f"| Citation Attribution | Citation Precision | {ov.mean_citation_precision:.4f} |",
+        f"| Citation Attribution | Citation Recall | {ov.mean_citation_recall:.4f} |",
+        f"| Citation Attribution | Citation Hallucination Rate | {ov.mean_citation_hallucination_rate:.4f} |",
         f"| Lexical Overlap | ROUGE-L | {ov.mean_rouge_l:.4f} |",
         f"| Lexical Overlap | Token F1 | {ov.mean_token_f1:.4f} |",
         f"| Lexical Overlap | BLEU-4 | {ov.mean_bleu_4:.4f} |",
@@ -106,14 +112,22 @@ def generate_markdown_report(
 
     for s in summary.samples:
         safe_id = re.sub(r"[^\w\-]", "_", s.item.id)
+        cit = s.citation
+        cit_str = f"`{'; '.join(s.response.cited_inquiries)}`" if s.response.cited_inquiries else "*None*"
         sample_lines = [
             f"### Query `{s.item.id}` [{s.item.typology} / {s.item.complexity}]",
             f"**Question**: {s.item.question}",
             "",
             f"**Ground Truth Reference Inquiries**: `{'; '.join(s.item.inquiry_references)}`",
-            f"**Retrieved Inquiries**: `{'; '.join(s.response.referenced_inquiries)}`",
+            f"**Retrieved Inquiries (Retriever)**: `{'; '.join(s.response.referenced_inquiries)}`",
+            f"**Cited Inquiries (Generator)**: {cit_str}",
             "",
             f"- **Precision@K**: {s.retrieval.precision_at_k:.4f} | **Recall@K**: {s.retrieval.recall_at_k:.4f} | **MRR**: {s.retrieval.mrr:.4f}",
+            (
+                f"- **Citation Precision**: {cit.precision:.4f} | **Citation Recall**: {cit.recall:.4f} | **Hallucination Rate**: {cit.hallucination_rate:.4f}"
+                if cit
+                else "- **Citation Metrics**: *N/A*"
+            ),
             f"- **ROUGE-L**: {s.lexical.rouge_l:.4f} | **Token F1**: {s.lexical.token_f1:.4f}",
             f"- **Faithfulness**: {s.llm_judge.faithfulness:.4f} | **Relevance**: {s.llm_judge.answer_relevance:.4f} | **Context Recall**: {s.llm_judge.context_recall:.4f}",
             "",
@@ -235,10 +249,12 @@ def generate_question_report(
     ret = sample.retrieval
     lex = sample.lexical
     judge = sample.llm_judge
+    cit = getattr(sample, "citation", None)
 
     typ_desc = TYPOLOGY_DESCRIPTIONS.get(item.typology, item.typology)
     comp_desc = COMPLEXITY_DESCRIPTIONS.get(item.complexity, item.complexity)
     reranker_name = resp.metadata.get("reranker") or "None (Direct Retrieval)"
+    cited_str = f"`{'; '.join(resp.cited_inquiries)}`" if resp.cited_inquiries else "*None*"
 
     lines = [
         f"# Benchmark Sample Report: `{item.id}`",
@@ -249,7 +265,8 @@ def generate_question_report(
         f"- **Investigative Typology**: `{item.typology}` — {typ_desc}",
         f"- **Complexity Level**: `{item.complexity}` — {comp_desc}",
         f"- **Ground Truth Target Inquiries**: `{'; '.join(item.inquiry_references)}`",
-        f"- **Retrieved Document Inquiries**: `{'; '.join(resp.referenced_inquiries)}`",
+        f"- **Retrieved Document Inquiries (Retriever)**: `{'; '.join(resp.referenced_inquiries)}`",
+        f"- **Cited Inquiries (Generator)**: {cited_str}",
         f"- **End-to-End Latency**: {resp.latency_ms:.1f} ms",
         f"- **Reranker Engine**: `{reranker_name}`",
         "",
@@ -261,6 +278,21 @@ def generate_question_report(
         f"| Retrieval | Recall@K | {ret.recall_at_k:.4f} | Coverage of target ground truth inquiry references |",
         f"| Retrieval | Hit Rate@K | {ret.hit_rate:.4f} | At least one relevant inquiry document identified |",
         f"| Retrieval | Mean Reciprocal Rank (MRR) | {ret.mrr:.4f} | Reciprocal rank of the first relevant inquiry document |",
+        (
+            f"| Citation Attribution | Citation Precision | {cit.precision:.4f} | Proportion of generator-cited inquiries present in ground truth |"
+            if cit
+            else "| Citation Attribution | Citation Precision | N/A | Generator citation precision |"
+        ),
+        (
+            f"| Citation Attribution | Citation Recall | {cit.recall:.4f} | Coverage of target ground truth references cited by generator |"
+            if cit
+            else "| Citation Attribution | Citation Recall | N/A | Generator citation recall |"
+        ),
+        (
+            f"| Citation Attribution | Citation Hallucination Rate | {cit.hallucination_rate:.4f} | Proportion of cited inquiries not grounded in retrieved context |"
+            if cit
+            else "| Citation Attribution | Citation Hallucination Rate | N/A | Generator citation hallucination rate |"
+        ),
         f"| Lexical Overlap | ROUGE-L | {lex.rouge_l:.4f} | Longest common subsequence F1 against reference answer |",
         f"| Lexical Overlap | Token F1 | {lex.token_f1:.4f} | Harmonic mean of token precision and recall |",
         f"| Lexical Overlap | BLEU-4 | {lex.bleu_4:.4f} | 4-gram precision against ground truth reference |",

@@ -26,7 +26,17 @@ def aggregate_samples(samples: list[SampleEvaluation]) -> TaxonomyAggregate:
             mean_answer_relevance=0.0,
             mean_context_recall=0.0,
             mean_latency_ms=0.0,
+            mean_citation_precision=0.0,
+            mean_citation_recall=0.0,
+            mean_citation_hallucination_rate=0.0,
         )
+
+    # Citation metrics aggregation (handling cases where sample.citation might be None)
+    c_samples = [s.citation for s in samples if getattr(s, "citation", None) is not None]
+    cn = len(c_samples) if c_samples else 1
+    mean_cit_prec = round(sum(c.precision for c in c_samples) / cn, 4) if c_samples else 0.0
+    mean_cit_rec = round(sum(c.recall for c in c_samples) / cn, 4) if c_samples else 0.0
+    mean_cit_hal = round(sum(c.hallucination_rate for c in c_samples) / cn, 4) if c_samples else 0.0
 
     return TaxonomyAggregate(
         sample_count=n,
@@ -41,6 +51,9 @@ def aggregate_samples(samples: list[SampleEvaluation]) -> TaxonomyAggregate:
         mean_answer_relevance=round(sum(s.llm_judge.answer_relevance for s in samples) / n, 4),
         mean_context_recall=round(sum(s.llm_judge.context_recall for s in samples) / n, 4),
         mean_latency_ms=round(sum(s.response.latency_ms for s in samples) / n, 2),
+        mean_citation_precision=mean_cit_prec,
+        mean_citation_recall=mean_cit_rec,
+        mean_citation_hallucination_rate=mean_cit_hal,
     )
 
 

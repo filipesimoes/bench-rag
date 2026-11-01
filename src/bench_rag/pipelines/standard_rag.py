@@ -6,18 +6,23 @@ from bench_rag.core.embedding import EmbeddingModel
 from bench_rag.core.generator import GeneratorLLM
 from bench_rag.core.pipeline import RAGPipeline, RAGResponse
 from bench_rag.core.reranker import Reranker
+from bench_rag.core.structured_output import StructuredResponseParser
 from bench_rag.core.vector_store import SearchResult, VectorStore
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are an expert forensic intelligence analyst examining criminal police inquiry reports.\n"
     "Rules for your response:\n"
-    "1. Brevity & Directness: Provide an ultra-concise answer in strictly 1 to 2 sentences. "
+    "1. Brevity & Directness: Provide an ultra-concise answer preferably in 1 and at maximum 2 sentences. "
     "State only the requested facts directly, with zero introductory phrases, greetings, methodology descriptions, or filler.\n"
     "2. Language: Always reply in the exact same language as the question (e.g., Portuguese if asked in Portuguese, English if asked in English).\n"
     "3. Evidence Grounding: Rely strictly on the provided context evidence. If the evidence is insufficient or does not contain the answer, "
-    "state directly in a single sentence that the information is not present in the provided records without speculating.\n"
-    "4. Formal Citation: At the very end of your response, append the relevant document IDs in brackets: "
-    "'[Fontes: <DOC_ID_1>, <DOC_ID_2>]' for Portuguese responses or '[Sources: <DOC_ID_1>, <DOC_ID_2>]' for English responses."
+    "state directly in 'answer' that the information is not present in the provided records without speculating.\n"
+    "4. Output Schema: You MUST respond with a valid JSON object matching exactly this schema:\n"
+    "{\n"
+    '  "answer": "<ultra-concise factual answer, preferably in 1 and at maximum 2 sentences>",\n'
+    '  "citations": ["<DOC_ID_1>", "<DOC_ID_2>"]\n'
+    "}\n"
+    'Do not include citation brackets or source IDs inside the "answer" string itself.'
 )
 
 
@@ -98,9 +103,9 @@ class StandardDenseRAGPipeline(RAGPipeline):
             f"Context Evidence:\n{context_str}\n\n"
             f"Question: {question}\n\n"
             f"Instructions: Answer the question above directly in 1 to 2 sentences using strictly the context evidence provided. "
-            f"Match the language of the question. Append citation brackets at the end ([Fontes: ...] or [Sources: ...]). "
+            f"Match the language of the question. Respond with a valid JSON object containing 'answer' and 'citations' (list of cited document IDs). "
             f"No introductory filler.\n\n"
-            f"Answer:"
+            f"JSON Response:"
         )
 
         gen_result = self.generator.generate(
@@ -108,13 +113,16 @@ class StandardDenseRAGPipeline(RAGPipeline):
             system_prompt=self.system_prompt,
         )
 
+        parsed = StructuredResponseParser.parse(gen_result.answer)
         latency_ms = (time.perf_counter() - start_time) * 1000.0
 
         return RAGResponse(
             question=question,
-            answer=gen_result.answer,
+            answer=parsed.answer,
             retrieved_chunks=final_results,
             referenced_inquiries=referenced_inquiries,
+            cited_inquiries=parsed.cited_inquiries,
+            raw_answer=gen_result.answer,
             latency_ms=latency_ms,
             pipeline_name=self._name,
             metadata={

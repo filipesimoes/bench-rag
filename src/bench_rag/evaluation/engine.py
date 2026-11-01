@@ -11,6 +11,7 @@ from bench_rag.core.evaluator import (
     SampleEvaluation,
 )
 from bench_rag.core.pipeline import RAGPipeline
+from bench_rag.evaluation.metrics.citation import compute_citation_metrics
 from bench_rag.evaluation.metrics.lexical import compute_lexical_metrics
 from bench_rag.evaluation.metrics.llm_judge import LLMJudge, get_judge
 from bench_rag.evaluation.metrics.retrieval import compute_retrieval_metrics
@@ -119,13 +120,20 @@ class StandardEvaluationEngine(EvaluationEngine):
                 k=effective_k,
             )
 
-            # 3. Lexical metrics against reference answer
+            # 3. Citation metrics against ground truth references (generator attribution)
+            citation_res = compute_citation_metrics(
+                cited_inquiries=response.cited_inquiries,
+                ground_truth_references=item.inquiry_references,
+                retrieved_inquiries=response.referenced_inquiries,
+            )
+
+            # 4. Lexical metrics against reference answer
             lexical_res = compute_lexical_metrics(
                 candidate=response.answer,
                 reference=item.reference_answer,
             )
 
-            # 4. Mandatory LLM-as-a-judge quality metrics
+            # 5. Mandatory LLM-as-a-judge quality metrics
             if progress_callback:
                 progress_callback(idx, total, item, "llm_judge")
 
@@ -144,6 +152,7 @@ class StandardEvaluationEngine(EvaluationEngine):
                     retrieval=retrieval_res,
                     lexical=lexical_res,
                     llm_judge=judge_res,
+                    citation=citation_res,
                 )
             )
 

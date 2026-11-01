@@ -50,6 +50,16 @@ class LLMJudgeMetrics:
 
 
 @dataclass
+class CitationMetrics:
+    """Generation citation evaluation metrics."""
+
+    precision: float
+    recall: float
+    hallucination_rate: float
+    cited_count: int
+
+
+@dataclass
 class SampleEvaluation:
     """Evaluation output for a single benchmark query."""
 
@@ -58,6 +68,7 @@ class SampleEvaluation:
     retrieval: RetrievalMetrics
     lexical: LexicalMetrics
     llm_judge: LLMJudgeMetrics
+    citation: CitationMetrics | None = None
 
 
 @dataclass
@@ -76,6 +87,9 @@ class TaxonomyAggregate:
     mean_answer_relevance: float
     mean_context_recall: float
     mean_latency_ms: float
+    mean_citation_precision: float = 0.0
+    mean_citation_recall: float = 0.0
+    mean_citation_hallucination_rate: float = 0.0
 
 
 @dataclass

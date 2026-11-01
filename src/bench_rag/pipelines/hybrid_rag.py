@@ -9,6 +9,7 @@ from bench_rag.core.embedding import EmbeddingModel
 from bench_rag.core.generator import GeneratorLLM
 from bench_rag.core.pipeline import RAGPipeline, RAGResponse
 from bench_rag.core.reranker import Reranker
+from bench_rag.core.structured_output import StructuredResponseParser
 from bench_rag.core.vector_store import SearchResult, VectorStore
 from bench_rag.pipelines.standard_rag import DEFAULT_SYSTEM_PROMPT
 
@@ -156,9 +157,9 @@ class HybridRAGPipeline(RAGPipeline):
             f"Context Evidence:\n{context_str}\n\n"
             f"Question: {question}\n\n"
             f"Instructions: Answer the question above directly in 1 to 2 sentences using strictly the context evidence provided. "
-            f"Match the language of the question. Append citation brackets at the end ([Fontes: ...] or [Sources: ...]). "
+            f"Match the language of the question. Respond with a valid JSON object containing 'answer' and 'citations' (list of cited document IDs). "
             f"No introductory filler.\n\n"
-            f"Answer:"
+            f"JSON Response:"
         )
 
         gen_result = self.generator.generate(
@@ -166,13 +167,16 @@ class HybridRAGPipeline(RAGPipeline):
             system_prompt=self.system_prompt,
         )
 
+        parsed = StructuredResponseParser.parse(gen_result.answer)
         latency_ms = (time.perf_counter() - start_time) * 1000.0
 
         return RAGResponse(
             question=question,
-            answer=gen_result.answer,
+            answer=parsed.answer,
             retrieved_chunks=final_results,
             referenced_inquiries=referenced_inquiries,
+            cited_inquiries=parsed.cited_inquiries,
+            raw_answer=gen_result.answer,
             latency_ms=latency_ms,
             pipeline_name=self._name,
             metadata={
