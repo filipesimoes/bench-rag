@@ -1,5 +1,7 @@
 """Universal HTTP client for vLLM, TEI and OpenAPI compatible /v1/rerank endpoints."""
 
+import logging
+import time
 from typing import Any
 
 import httpx
@@ -7,6 +9,8 @@ import httpx
 from bench_rag.config import settings
 from bench_rag.core.reranker import Reranker
 from bench_rag.core.vector_store import SearchResult
+
+logger = logging.getLogger(__name__)
 
 
 class HttpReranker(Reranker):
@@ -17,7 +21,9 @@ class HttpReranker(Reranker):
         model: str | None = None,
         base_url: str | None = None,
         api_key: str | None = None,
-        timeout: float = 60.0,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+        retry_backoff: float | None = None,
     ):
         self.model = model or settings.effective_reranker_model
         resolved_url = (base_url or settings.effective_reranker_base_url).rstrip("/")
@@ -31,7 +37,11 @@ class HttpReranker(Reranker):
             self.endpoint = f"{resolved_url}/v1/rerank"
 
         self.api_key = api_key or settings.effective_reranker_api_key
-        self.timeout = timeout
+        self.timeout = timeout if timeout is not None else settings.reranker_timeout
+        self.max_retries = max_retries if max_retries is not None else settings.http_max_retries
+        self.retry_backoff = (
+            retry_backoff if retry_backoff is not None else settings.http_retry_backoff
+        )
 
     def rerank(
         self,
@@ -56,11 +66,47 @@ class HttpReranker(Reranker):
             "top_n": min(top_k, len(results)),
         }
 
-        # Fail-fast: raise_for_status without catching to prevent silent degradation
-        with httpx.Client(timeout=self.timeout) as client:
-            resp = client.post(self.endpoint, json=payload, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
+        data = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                with httpx.Client(timeout=self.timeout) as client:
+                    resp = client.post(self.endpoint, json=payload, headers=headers)
+                    try:
+                        resp.raise_for_status()
+                    except httpx.HTTPStatusError as e:
+                        if e.response.status_code in (429, 500, 502, 503, 504) and attempt < self.max_retries:
+                            sleep_s = self.retry_backoff * (2**attempt)
+                            logger.warning(
+                                "Reranker API call to %s returned HTTP %s (attempt %d/%d). Retrying in %.1fs...",
+                                self.endpoint,
+                                e.response.status_code,
+                                attempt + 1,
+                                self.max_retries + 1,
+                                sleep_s,
+                            )
+                            time.sleep(sleep_s)
+                            continue
+                        raise
+                    data = resp.json()
+                    break
+            except (httpx.TimeoutException, httpx.NetworkError) as e:
+                if attempt < self.max_retries:
+                    sleep_s = self.retry_backoff * (2**attempt)
+                    logger.warning(
+                        "Reranker API call to %s failed with %s: %s (attempt %d/%d). Retrying in %.1fs...",
+                        self.endpoint,
+                        type(e).__name__,
+                        str(e),
+                        attempt + 1,
+                        self.max_retries + 1,
+                        sleep_s,
+                    )
+                    time.sleep(sleep_s)
+                    continue
+                raise
+
+        if data is None:
+            raise RuntimeError(f"Reranker API call to {self.endpoint} failed to return data.")
 
         raw_results = data.get("results", data)
         reranked: list[SearchResult] = []

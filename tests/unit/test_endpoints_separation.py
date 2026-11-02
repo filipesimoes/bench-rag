@@ -135,3 +135,37 @@ def test_pipeline_config_thinking_overrides():
     assert isinstance(engine.judge.generator, OpenAIGeneratorLLM)
     assert engine.judge.generator.enable_thinking is True
     assert engine.judge.generator.dialect == "gemini"
+
+
+def test_pipeline_config_timeout_overrides():
+    """Test that PipelineConfig allows overriding timeouts and max_retries."""
+    cfg = PipelineConfig(
+        generator_type="openai",
+        generator_timeout=240.0,
+        judge_type="openai",
+        judge_timeout=300.0,
+        embedding_type="openai",
+        embedding_timeout=90.0,
+        max_retries=5,
+    )
+    assert cfg.generator_timeout == 240.0
+    assert cfg.judge_timeout == 300.0
+    assert cfg.embedding_timeout == 90.0
+    assert cfg.max_retries == 5
+
+    pipeline = build_pipeline_from_config(cfg)
+    assert isinstance(pipeline.generator, OpenAIGeneratorLLM)
+    assert pipeline.generator.timeout == 240.0
+    assert pipeline.generator.max_retries == 5
+    assert isinstance(pipeline.embedding_model, OpenAIEmbeddingModel)
+    assert pipeline.embedding_model.timeout == 90.0
+    assert pipeline.embedding_model.max_retries == 5
+
+    engine = StandardEvaluationEngine(
+        judge_type=cfg.judge_type,
+        judge_timeout=cfg.judge_timeout,
+        judge_max_retries=cfg.max_retries,
+    )
+    assert isinstance(engine.judge.generator, OpenAIGeneratorLLM)
+    assert engine.judge.generator.timeout == 300.0
+    assert engine.judge.generator.max_retries == 5

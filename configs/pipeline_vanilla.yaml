@@ -20,8 +20,8 @@ embedding_type: openai            # Default dense embedding model
 vector_store_type: qdrant         # Application vector database
 generator_type: openai            # Default LLM generator
 judge_type: openai                # Default evaluation judge
-reranker_type: vllm               # Default reranker
+reranker_type: none               # Default reranker
 rerank_fetch_k: 20                # Top-20 candidate pool
-top_k: 5                          # Top-5 retrieved chunks
+top_k: 10                         # Top-5 retrieved chunks
 collection_name: police_reports
 distance_metric: cosine           # Cosine distance metric

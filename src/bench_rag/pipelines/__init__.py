@@ -18,6 +18,8 @@ def build_pipeline_from_config(config: PipelineConfig) -> RAGPipeline:
         base_url=config.embedding_base_url,
         query_prefix=config.embedding_query_prefix,
         document_prefix=config.embedding_document_prefix,
+        timeout=config.embedding_timeout,
+        max_retries=config.max_retries,
     )
     vector_store = get_vector_store(
         store_type=config.vector_store_type,
@@ -30,11 +32,15 @@ def build_pipeline_from_config(config: PipelineConfig) -> RAGPipeline:
         dialect=config.generator_dialect,
         max_tokens=config.generator_max_tokens,
         temperature=config.generator_temperature,
+        timeout=config.generator_timeout,
+        max_retries=config.max_retries,
     )
     reranker = get_reranker(
         reranker_type=config.reranker_type,
         model=config.reranker_model,
         base_url=config.reranker_base_url,
+        timeout=config.reranker_timeout,
+        max_retries=config.max_retries,
     )
 
     if config.pipeline_type == "hybrid":

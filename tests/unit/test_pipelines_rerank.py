@@ -188,7 +188,7 @@ def test_concise_prompt_construction_and_system_prompt():
 
     # 1. Check default system_prompt rules
     assert "Rules for your response:" in pipe.system_prompt
-    assert "1 to 2 sentences" in pipe.system_prompt
+    assert "maximum 2 sentences" in pipe.system_prompt
     assert "Output Schema:" in pipe.system_prompt
     assert '"citations":' in pipe.system_prompt
 

@@ -10,6 +10,8 @@ def get_reranker(
     model: str | None = None,
     base_url: str | None = None,
     api_key: str | None = None,
+    timeout: float | None = None,
+    max_retries: int | None = None,
 ) -> Reranker | None:
     """Instantiate a Reranker based on provider type."""
     t = (reranker_type or "none").lower()
@@ -22,6 +24,8 @@ def get_reranker(
             model=model,
             base_url=base_url,
             api_key=api_key,
+            timeout=timeout,
+            max_retries=max_retries,
         )
     else:
         raise ValueError(f"Unknown reranker_type: '{reranker_type}'")

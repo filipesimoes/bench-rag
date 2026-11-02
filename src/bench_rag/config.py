@@ -66,6 +66,13 @@ class PipelineConfig(BaseModel):
     system_prompt: str | None = None
     generator_response_format: str | None = None
 
+    # HTTP Client Timeouts & Retries (optional overrides per pipeline)
+    generator_timeout: float | None = None
+    judge_timeout: float | None = None
+    embedding_timeout: float | None = None
+    reranker_timeout: float | None = None
+    max_retries: int | None = None
+
 
 class Settings(BaseSettings):
     """Global environment and service settings."""
@@ -152,6 +159,14 @@ class Settings(BaseSettings):
     qdrant_port: int = 6333
     qdrant_collection_name: str = "police_reports"
     qdrant_timeout: float = 60.0
+
+    # HTTP Client Timeouts & Retries (seconds)
+    generator_timeout: float = 180.0
+    judge_timeout: float = 180.0
+    embedding_timeout: float = 60.0
+    reranker_timeout: float = 120.0
+    http_max_retries: int = 3
+    http_retry_backoff: float = 2.0
 
     # Defaults
     default_chunk_size: int = 1000

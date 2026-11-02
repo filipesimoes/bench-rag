@@ -17,6 +17,8 @@ def get_generator(
     dialect: str | None = None,
     max_tokens: int | None = None,
     temperature: float | None = None,
+    timeout: float | None = None,
+    max_retries: int | None = None,
 ) -> GeneratorLLM:
     """Factory function to instantiate a GeneratorLLM."""
     match generator_type.lower():
@@ -33,6 +35,8 @@ def get_generator(
                 api_key=api_key,
                 max_tokens=max_tokens,
                 temperature=temperature,
+                timeout=timeout,
+                max_retries=max_retries,
                 **kwargs,
             )
         case _:

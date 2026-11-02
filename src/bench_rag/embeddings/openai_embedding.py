@@ -1,5 +1,7 @@
 """OpenAI-compatible embedding model client."""
 
+import logging
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -7,6 +9,8 @@ import httpx
 
 from bench_rag.config import settings
 from bench_rag.core.embedding import EmbeddingModel
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIEmbeddingModel(EmbeddingModel):
@@ -19,7 +23,9 @@ class OpenAIEmbeddingModel(EmbeddingModel):
         api_key: str | None = None,
         dimension: int | None = None,
         batch_size: int = 64,
-        timeout: float = 30.0,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+        retry_backoff: float | None = None,
         query_prefix: str | None = None,
         document_prefix: str | None = None,
     ):
@@ -29,7 +35,11 @@ class OpenAIEmbeddingModel(EmbeddingModel):
         self.api_key = api_key or settings.effective_embedding_api_key
         self._dimension = dimension or settings.embedding_dimension
         self.batch_size = batch_size
-        self.timeout = timeout
+        self.timeout = timeout if timeout is not None else settings.embedding_timeout
+        self.max_retries = max_retries if max_retries is not None else settings.http_max_retries
+        self.retry_backoff = (
+            retry_backoff if retry_backoff is not None else settings.http_retry_backoff
+        )
         self.query_prefix = (
             query_prefix if query_prefix is not None else settings.embedding_query_prefix
         )
@@ -52,10 +62,47 @@ class OpenAIEmbeddingModel(EmbeddingModel):
             "input": texts,
         }
 
-        with httpx.Client(timeout=self.timeout) as client:
-            response = client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-            data = response.json()
+        data = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                with httpx.Client(timeout=self.timeout) as client:
+                    response = client.post(url, json=payload, headers=headers)
+                    try:
+                        response.raise_for_status()
+                    except httpx.HTTPStatusError as e:
+                        if e.response.status_code in (429, 500, 502, 503, 504) and attempt < self.max_retries:
+                            sleep_s = self.retry_backoff * (2**attempt)
+                            logger.warning(
+                                "Embedding API call to %s returned HTTP %s (attempt %d/%d). Retrying in %.1fs...",
+                                url,
+                                e.response.status_code,
+                                attempt + 1,
+                                self.max_retries + 1,
+                                sleep_s,
+                            )
+                            time.sleep(sleep_s)
+                            continue
+                        raise
+                    data = response.json()
+                    break
+            except (httpx.TimeoutException, httpx.NetworkError) as e:
+                if attempt < self.max_retries:
+                    sleep_s = self.retry_backoff * (2**attempt)
+                    logger.warning(
+                        "Embedding API call to %s failed with %s: %s (attempt %d/%d). Retrying in %.1fs...",
+                        url,
+                        type(e).__name__,
+                        str(e),
+                        attempt + 1,
+                        self.max_retries + 1,
+                        sleep_s,
+                    )
+                    time.sleep(sleep_s)
+                    continue
+                raise
+
+        if data is None:
+            raise RuntimeError(f"Embedding API call to {url} failed to return data.")
 
         data_items = sorted(data["data"], key=lambda x: x["index"])
         embeddings = [item["embedding"] for item in data_items]

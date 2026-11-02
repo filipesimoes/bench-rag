@@ -19,6 +19,7 @@ class MockEmbeddingModel(EmbeddingModel):
         document_prefix: str | None = None,
     ):
         self._dimension = dimension
+        self.model_name = "mock-embedding"
         self.query_prefix = (
             query_prefix if query_prefix is not None else settings.embedding_query_prefix
         )

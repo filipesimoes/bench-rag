@@ -13,6 +13,8 @@ def get_embedding_model(
     api_key: str | None = None,
     query_prefix: str | None = None,
     document_prefix: str | None = None,
+    timeout: float | None = None,
+    max_retries: int | None = None,
 ) -> EmbeddingModel:
     """Factory function to instantiate an EmbeddingModel."""
     match embedding_type.lower():
@@ -30,6 +32,8 @@ def get_embedding_model(
                 api_key=api_key,
                 query_prefix=query_prefix,
                 document_prefix=document_prefix,
+                timeout=timeout,
+                max_retries=max_retries,
             )
         case _:
             raise ValueError(

@@ -340,7 +340,86 @@ def test_openai_generator_raises_on_finish_reason_length(monkeypatch):
 
 
 def test_generator_factory_with_tokens_and_temperature():
-    g = get_generator("openai", max_tokens=4096, temperature=0.3)
+    g = get_generator("openai", max_tokens=4096, temperature=0.3, timeout=90.0, max_retries=2)
     assert isinstance(g, OpenAIGeneratorLLM)
     assert g.max_tokens == 4096
     assert g.temperature == 0.3
+    assert g.timeout == 90.0
+    assert g.max_retries == 2
+
+
+def test_openai_generator_retry_on_timeout(monkeypatch):
+    calls = 0
+
+    class MockResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {
+                "choices": [{"message": {"content": "Synthetic test answer."}}],
+                "usage": {"total_tokens": 10},
+            }
+
+    class MockRetryClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def post(self, url, json, headers):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise httpx.ReadTimeout("The read operation timed out")
+            return MockResponse()
+
+    monkeypatch.setattr("httpx.Client", MockRetryClient)
+
+    gen = OpenAIGeneratorLLM(
+        model="test-model",
+        base_url="https://api.test/v1",
+        api_key="k",
+        max_retries=2,
+        retry_backoff=0.01,
+    )
+    res = gen.generate("Test prompt")
+    assert res.answer == "Synthetic test answer."
+    assert calls == 2
+
+
+def test_openai_generator_exhausts_retries(monkeypatch):
+    calls = 0
+
+    class MockFailingClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def post(self, url, json, headers):
+            nonlocal calls
+            calls += 1
+            raise httpx.ReadTimeout("Timeout on attempt")
+
+    monkeypatch.setattr("httpx.Client", MockFailingClient)
+
+    gen = OpenAIGeneratorLLM(
+        model="test-model",
+        base_url="https://api.test/v1",
+        api_key="k",
+        max_retries=2,
+        retry_backoff=0.01,
+    )
+    with pytest.raises(httpx.ReadTimeout):
+        gen.generate("Test prompt")
+
+    assert calls == 3  # 1 initial + 2 retries

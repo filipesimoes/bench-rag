@@ -1,12 +1,16 @@
 """OpenAI-compatible LLM generator client."""
 
+import logging
 import re
+import time
 from typing import Any
 
 import httpx
 
 from bench_rag.config import settings
 from bench_rag.core.generator import GenerationResult, GeneratorLLM
+
+logger = logging.getLogger(__name__)
 
 _UNSET = object()
 
@@ -21,7 +25,9 @@ class OpenAIGeneratorLLM(GeneratorLLM):
         api_key: str | None = None,
         enable_thinking: bool | None | object = _UNSET,
         dialect: str = "auto",
-        timeout: float = 60.0,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+        retry_backoff: float | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
         response_format: dict[str, Any] | str | None | object = _UNSET,
@@ -34,7 +40,11 @@ class OpenAIGeneratorLLM(GeneratorLLM):
             settings.generator_enable_thinking if enable_thinking is _UNSET else enable_thinking
         )
         self.dialect = dialect
-        self.timeout = timeout
+        self.timeout = timeout if timeout is not None else settings.generator_timeout
+        self.max_retries = max_retries if max_retries is not None else settings.http_max_retries
+        self.retry_backoff = (
+            retry_backoff if retry_backoff is not None else settings.http_retry_backoff
+        )
         self.max_tokens = max_tokens
         self.temperature = temperature
         configured_rf = (
@@ -110,17 +120,51 @@ class OpenAIGeneratorLLM(GeneratorLLM):
             else:
                 payload["chat_template_kwargs"] = {"enable_thinking": self.enable_thinking}
 
-        with httpx.Client(timeout=self.timeout) as client:
-            response = client.post(url, json=payload, headers=headers)
+        data = None
+        for attempt in range(self.max_retries + 1):
             try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                raise httpx.HTTPStatusError(
-                    f"API call to {url} failed with status {e.response.status_code}: {e.response.text}",
-                    request=e.request,
-                    response=e.response,
-                ) from e
-            data = response.json()
+                with httpx.Client(timeout=self.timeout) as client:
+                    response = client.post(url, json=payload, headers=headers)
+                    try:
+                        response.raise_for_status()
+                    except httpx.HTTPStatusError as e:
+                        if e.response.status_code in (429, 500, 502, 503, 504) and attempt < self.max_retries:
+                            sleep_s = self.retry_backoff * (2**attempt)
+                            logger.warning(
+                                "OpenAI API call to %s returned HTTP %s (attempt %d/%d). Retrying in %.1fs...",
+                                url,
+                                e.response.status_code,
+                                attempt + 1,
+                                self.max_retries + 1,
+                                sleep_s,
+                            )
+                            time.sleep(sleep_s)
+                            continue
+                        raise httpx.HTTPStatusError(
+                            f"API call to {url} failed with status {e.response.status_code}: {e.response.text}",
+                            request=e.request,
+                            response=e.response,
+                        ) from e
+                    data = response.json()
+                    break
+            except (httpx.TimeoutException, httpx.NetworkError) as e:
+                if attempt < self.max_retries:
+                    sleep_s = self.retry_backoff * (2**attempt)
+                    logger.warning(
+                        "OpenAI API call to %s failed with %s: %s (attempt %d/%d). Retrying in %.1fs...",
+                        url,
+                        type(e).__name__,
+                        str(e),
+                        attempt + 1,
+                        self.max_retries + 1,
+                        sleep_s,
+                    )
+                    time.sleep(sleep_s)
+                    continue
+                raise
+
+        if data is None:
+            raise RuntimeError(f"OpenAI API call to {url} failed to return data.")
 
         choice = data["choices"][0]
         finish_reason = choice.get("finish_reason")

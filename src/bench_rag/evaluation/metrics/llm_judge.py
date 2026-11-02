@@ -1,8 +1,11 @@
 """Mandatory LLM-as-a-Judge metric evaluation."""
 
 import json
+import logging
 import re
 from typing import Any
+
+import httpx
 
 from bench_rag.config import settings
 from bench_rag.core.evaluator import LLMJudgeMetrics
@@ -10,6 +13,8 @@ from bench_rag.core.generator import GeneratorLLM
 from bench_rag.evaluation.metrics.lexical import calculate_token_f1
 from bench_rag.generators.mock_generator import MockGeneratorLLM
 from bench_rag.generators.openai_generator import OpenAIGeneratorLLM
+
+logger = logging.getLogger(__name__)
 
 JUDGE_SYSTEM_PROMPT = """You are a rigorous, impartial forensic intelligence auditor.
 Your job is to evaluate a RAG system's response to an investigative query about police inquiry reports.
@@ -69,8 +74,9 @@ class LLMJudge:
                 prompt=prompt,
                 system_prompt=JUDGE_SYSTEM_PROMPT,
             )
-        except (json.JSONDecodeError, KeyError, ValueError, RuntimeError, TypeError, OSError) as e:
+        except (json.JSONDecodeError, KeyError, ValueError, RuntimeError, TypeError, OSError, httpx.HTTPError) as e:
             # Fallback to lexical alignment if remote call or JSON parsing fails
+            logger.warning("LLM Judge evaluation failed (%s: %s). Falling back to lexical alignment.", type(e).__name__, e)
             fallback_score = calculate_token_f1(answer, reference_answer)
             return LLMJudgeMetrics(
                 faithfulness=0.85,
@@ -130,6 +136,8 @@ def get_judge(
     enable_thinking: bool | None = None,
     dialect: str | None = None,
     max_tokens: int | None = None,
+    timeout: float | None = None,
+    max_retries: int | None = None,
 ) -> LLMJudge:
     """Factory function to instantiate an LLMJudge."""
     match judge_type.lower():
@@ -151,6 +159,8 @@ def get_judge(
                 ),
                 dialect=dialect or settings.judge_dialect,
                 max_tokens=max_tokens or settings.judge_max_tokens,
+                timeout=timeout if timeout is not None else settings.judge_timeout,
+                max_retries=max_retries if max_retries is not None else settings.http_max_retries,
             )
             return LLMJudge(generator=gen)
         case _:

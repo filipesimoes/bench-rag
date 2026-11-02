@@ -105,3 +105,27 @@ def test_get_judge_factory():
 
     with pytest.raises(ValueError, match="Unsupported judge type"):
         get_judge("invalid")
+
+
+def test_llm_judge_timeout_fallback():
+    import httpx
+
+    from bench_rag.core.generator import GeneratorLLM
+
+    class TimingOutGenerator(GeneratorLLM):
+        def generate(self, prompt, **kwargs):
+            raise httpx.ReadTimeout("The read operation timed out during judge scoring")
+
+    judge = LLMJudge(generator=TimingOutGenerator())
+    res = judge.evaluate(
+        question="What is the role of TEST AGENT?",
+        answer="TEST AGENT was the designated officer.",
+        context="Synthetic record indicates TEST AGENT was the designated officer.",
+        reference_answer="TEST AGENT was the designated officer.",
+    )
+
+    assert res.faithfulness == 0.85
+    assert res.answer_relevance >= 0.5
+    assert res.context_recall == 1.0  # Perfect token f1 match with reference answer
+    assert "fallback parser" in res.critique
+    assert "timed out" in res.critique
