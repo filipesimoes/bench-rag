@@ -16,6 +16,7 @@ from bench_rag.core.pipeline import RAGResponse
 from bench_rag.core.vector_store import SearchResult
 from bench_rag.reporting.markdown_reporter import (
     generate_all_question_reports,
+    generate_comparison_report,
     generate_markdown_report,
     generate_question_report,
 )
@@ -270,6 +271,14 @@ def test_main_markdown_report_includes_question_links(tmp_path: Path):
     content = generate_markdown_report(summary, output_path=out_file, question_rel_dir="questions")
 
     assert out_file.exists()
+    assert "- **Mean Context Recall (LLM Judge)**: 0.9000" in content
+    assert "## 2. Pipeline & Models Configuration" in content
+    assert "| **Generator Model** |" in content
+    assert "| **Embedding Model** |" in content
+    assert "| **Reranker Model** |" in content
+    assert "| **LLM Judge Model** |" in content
+    assert "| Typology | Complexity | Samples | Recall@K | MRR | Token F1 | Faithfulness | Relevance | Context Recall |" in content
+    assert "| **T1** | **C1** | 1 | 1.0000 | 1.0000 | 0.9000 | 0.9500 | 0.9500 | 0.9000 |" in content
     assert "[View Detailed Question Report](questions/GT-T1-C1.md)" in content
 
     # Test with custom subfolder for compare
@@ -280,3 +289,63 @@ def test_main_markdown_report_includes_question_links(tmp_path: Path):
         "[View Detailed Question Report](questions/standard_dense_rag/GT-T1-C1.md)"
         in content_compare
     )
+
+
+def test_generate_comparison_report_markdown(tmp_path: Path):
+    sample = _create_dummy_sample(with_rerank=True)
+    dummy_agg_a = TaxonomyAggregate(
+        sample_count=1,
+        mean_precision_at_k=0.8,
+        mean_recall_at_k=0.75,
+        mean_hit_rate=1.0,
+        mean_mrr=0.75,
+        mean_rouge_l=0.8,
+        mean_token_f1=0.8,
+        mean_bleu_4=0.7,
+        mean_faithfulness=0.9,
+        mean_answer_relevance=0.9,
+        mean_context_recall=0.85,
+        mean_latency_ms=100.0,
+    )
+    dummy_agg_b = TaxonomyAggregate(
+        sample_count=1,
+        mean_precision_at_k=0.9,
+        mean_recall_at_k=0.85,
+        mean_hit_rate=1.0,
+        mean_mrr=0.85,
+        mean_rouge_l=0.85,
+        mean_token_f1=0.88,
+        mean_bleu_4=0.75,
+        mean_faithfulness=0.95,
+        mean_answer_relevance=0.95,
+        mean_context_recall=0.90,
+        mean_latency_ms=150.0,
+    )
+    summary_a = EvaluationSummary(
+        pipeline_name="pipe_a",
+        total_samples=1,
+        overall=dummy_agg_a,
+        by_typology={"T1": dummy_agg_a},
+        by_complexity={"C1": dummy_agg_a},
+        matrix={"T1": {"C1": dummy_agg_a}},
+        samples=[sample],
+    )
+    summary_b = EvaluationSummary(
+        pipeline_name="pipe_b",
+        total_samples=1,
+        overall=dummy_agg_b,
+        by_typology={"T1": dummy_agg_b},
+        by_complexity={"C1": dummy_agg_b},
+        matrix={"T1": {"C1": dummy_agg_b}},
+        samples=[sample],
+    )
+
+    out_file = tmp_path / "comparison_report.md"
+    content = generate_comparison_report(summary_a, summary_b, output_path=out_file)
+
+    assert out_file.exists()
+    assert "## 2. Pipeline Architectures & Models Comparison" in content
+    assert "| **Context Recall (Judge)** | 0.8500 | 0.9000 | +0.0500 |" in content
+    assert "| Typology | pipe_a Recall | pipe_b Recall | pipe_a Faith | pipe_b Faith | pipe_a CtxRec | pipe_b CtxRec |" in content
+    assert "| **T1** | 0.7500 | 0.8500 | 0.9000 | 0.9500 | 0.8500 | 0.9000 |" in content
+

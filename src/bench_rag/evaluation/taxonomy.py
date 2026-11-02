@@ -1,6 +1,7 @@
 """Taxonomy aggregation across investigative typologies (T1-T3) and complexities (C1-C3)."""
 
 from collections import defaultdict
+from typing import Any
 
 from bench_rag.core.evaluator import (
     EvaluationSummary,
@@ -60,6 +61,7 @@ def aggregate_samples(samples: list[SampleEvaluation]) -> TaxonomyAggregate:
 def build_evaluation_summary(
     pipeline_name: str,
     samples: list[SampleEvaluation],
+    execution_metadata: dict[str, Any] | None = None,
 ) -> EvaluationSummary:
     """Group sample evaluations by Typology, Complexity, and their 2D Matrix."""
     overall = aggregate_samples(samples)
@@ -103,4 +105,5 @@ def build_evaluation_summary(
         by_complexity=by_complexity,
         matrix=matrix,
         samples=samples,
+        execution_metadata=execution_metadata or {},
     )

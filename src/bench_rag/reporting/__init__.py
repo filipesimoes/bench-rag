@@ -4,13 +4,13 @@ from bench_rag.reporting.chunk_reporter import (
     export_document_chunks,
     format_document_chunks_txt,
 )
-from bench_rag.reporting.json_csv_reporter import export_evaluation_json, export_samples_csv
-from bench_rag.reporting.markdown_reporter import (
+from bench_rag.reporting.html_reporter import (
     generate_all_question_reports,
     generate_comparison_report,
-    generate_markdown_report,
+    generate_html_report,
     generate_question_report,
 )
+from bench_rag.reporting.json_csv_reporter import export_evaluation_json, export_samples_csv
 from bench_rag.reporting.progress import (
     format_file_size,
     track_embeddings,
@@ -20,6 +20,9 @@ from bench_rag.reporting.progress import (
     truncate_text,
 )
 
+# Backwards compatibility alias
+generate_markdown_report = generate_html_report
+
 __all__ = [
     "export_document_chunks",
     "export_evaluation_json",
@@ -28,6 +31,7 @@ __all__ = [
     "format_file_size",
     "generate_all_question_reports",
     "generate_comparison_report",
+    "generate_html_report",
     "generate_markdown_report",
     "generate_question_report",
     "track_embeddings",

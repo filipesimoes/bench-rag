@@ -1,7 +1,7 @@
 """Core EvaluationEngine protocol and evaluation data models."""
 
 from dataclasses import dataclass, field
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from bench_rag.core.pipeline import RAGPipeline, RAGResponse
 
@@ -103,6 +103,7 @@ class EvaluationSummary:
     by_complexity: dict[str, TaxonomyAggregate]  # C1, C2, C3
     matrix: dict[str, dict[str, TaxonomyAggregate]]  # Typology x Complexity
     samples: list[SampleEvaluation] = field(default_factory=list)
+    execution_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @runtime_checkable
@@ -137,6 +138,7 @@ class EvaluationEngine(Protocol):
         pipeline: RAGPipeline,
         top_k: int | None = None,
         progress_callback: EvaluationProgressCallback | None = None,
+        execution_metadata: dict[str, Any] | None = None,
     ) -> EvaluationSummary:
         """Run inference and compute all metrics aggregated across taxonomies."""
         ...

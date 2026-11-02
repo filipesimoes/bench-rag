@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+from typing import Any
 
 from bench_rag.core.evaluator import EvaluationSummary, SampleEvaluation, TaxonomyAggregate
 
@@ -36,6 +37,135 @@ def _format_aggregate_table(title: str, aggregates: dict[str, TaxonomyAggregate]
     return "\n".join(lines)
 
 
+def _format_pipeline_config_markdown(summary: EvaluationSummary) -> list[str]:
+    """Format pipeline architecture and models configuration as markdown lines."""
+    meta = getattr(summary, "execution_metadata", None) or {}
+
+    p_arch = meta.get("pipeline_type")
+    if not p_arch:
+        name_lower = summary.pipeline_name.lower()
+        p_arch = (
+            "Hybrid BM25 + Dense RAG"
+            if "hybrid" in name_lower
+            else "Standard Dense RAG"
+        )
+
+    top_k = meta.get("top_k")
+    if top_k is None:
+        if (
+            summary.samples
+            and summary.samples[0].response.metadata.get("top_k") is not None
+        ):
+            top_k = summary.samples[0].response.metadata.get("top_k")
+        else:
+            top_k = 5
+
+    gen_model = meta.get("generator_model")
+    if not gen_model or gen_model == "N/A":
+        if summary.samples:
+            gen_model = summary.samples[0].response.metadata.get("model_name") or "N/A"
+        else:
+            gen_model = "N/A"
+
+    emb_model = meta.get("embedding_model") or "N/A"
+
+    rerank_model = meta.get("reranker_model")
+    if not rerank_model:
+        if summary.samples:
+            r = summary.samples[0].response.metadata.get("reranker")
+            rerank_model = r or "None (Direct Retrieval)"
+        else:
+            rerank_model = "None (Direct Retrieval)"
+
+    judge_model = meta.get("judge_model") or "N/A"
+
+    return [
+        "## 2. Pipeline & Models Configuration",
+        "",
+        "| Component | Configuration / Model |",
+        "|---|---|",
+        f"| **Pipeline Architecture** | `{p_arch}` |",
+        f"| **Top-K Retrieval** | `{top_k}` |",
+        f"| **Generator Model** | `{gen_model}` |",
+        f"| **Embedding Model** | `{emb_model}` |",
+        f"| **Reranker Model** | `{rerank_model}` |",
+        f"| **LLM Judge Model** | `{judge_model}` |",
+        "",
+    ]
+
+
+def _format_comparison_config_markdown(
+    summary_a: EvaluationSummary, summary_b: EvaluationSummary
+) -> list[str]:
+    """Format comparative pipeline architecture and models configuration as markdown lines."""
+
+    def extract_cfg(s: EvaluationSummary) -> dict[str, Any]:
+        meta = getattr(s, "execution_metadata", None) or {}
+        p_arch = meta.get("pipeline_type")
+        if not p_arch:
+            p_arch = (
+                "Hybrid BM25 + Dense RAG"
+                if "hybrid" in s.pipeline_name.lower()
+                else "Standard Dense RAG"
+            )
+
+        top_k = meta.get("top_k")
+        if top_k is None:
+            if (
+                s.samples
+                and s.samples[0].response.metadata.get("top_k") is not None
+            ):
+                top_k = s.samples[0].response.metadata.get("top_k")
+            else:
+                top_k = 5
+
+        gen = meta.get("generator_model")
+        if not gen or gen == "N/A":
+            gen = (
+                s.samples[0].response.metadata.get("model_name", "N/A")
+                if s.samples
+                else "N/A"
+            )
+
+        emb = meta.get("embedding_model") or "N/A"
+
+        rerank = meta.get("reranker_model")
+        if not rerank:
+            if s.samples:
+                r = s.samples[0].response.metadata.get("reranker")
+                rerank = r or "None (Direct Retrieval)"
+            else:
+                rerank = "None (Direct Retrieval)"
+
+        judge = meta.get("judge_model") or "N/A"
+
+        return {
+            "pipeline_type": p_arch,
+            "top_k": top_k,
+            "generator_model": gen,
+            "embedding_model": emb,
+            "reranker_model": rerank,
+            "judge_model": judge,
+        }
+
+    cfg_a = extract_cfg(summary_a)
+    cfg_b = extract_cfg(summary_b)
+
+    return [
+        "## 2. Pipeline Architectures & Models Comparison",
+        "",
+        f"| Component | `{summary_a.pipeline_name}` (A) | `{summary_b.pipeline_name}` (B) |",
+        "|---|---|---|",
+        f"| **Pipeline Architecture** | `{cfg_a['pipeline_type']}` | `{cfg_b['pipeline_type']}` |",
+        f"| **Top-K Retrieval** | `{cfg_a['top_k']}` | `{cfg_b['top_k']}` |",
+        f"| **Generator Model** | `{cfg_a['generator_model']}` | `{cfg_b['generator_model']}` |",
+        f"| **Embedding Model** | `{cfg_a['embedding_model']}` | `{cfg_b['embedding_model']}` |",
+        f"| **Reranker Model** | `{cfg_a['reranker_model']}` | `{cfg_b['reranker_model']}` |",
+        f"| **LLM Judge Model** | `{cfg_a['judge_model']}` | `{cfg_b['judge_model']}` |",
+        "",
+    ]
+
+
 def generate_markdown_report(
     summary: EvaluationSummary,
     output_path: Path | str | None = None,
@@ -55,9 +185,11 @@ def generate_markdown_report(
         f"- **Mean Citation Recall**: {ov.mean_citation_recall:.4f}",
         f"- **Mean Answer Faithfulness (LLM Judge)**: {ov.mean_faithfulness:.4f}",
         f"- **Mean Answer Relevance (LLM Judge)**: {ov.mean_answer_relevance:.4f}",
+        f"- **Mean Context Recall (LLM Judge)**: {ov.mean_context_recall:.4f}",
         f"- **Mean Latency**: {ov.mean_latency_ms:.1f} ms",
         "",
-        "## 2. Global Performance Metrics",
+        *_format_pipeline_config_markdown(summary),
+        "## 3. Global Performance Metrics",
         "",
         "| Metric Category | Metric | Score |",
         "|---|---|---|",
@@ -76,22 +208,22 @@ def generate_markdown_report(
         f"| LLM-as-a-Judge | Context Recall | {ov.mean_context_recall:.4f} |",
         f"| Performance | Mean Latency | {ov.mean_latency_ms:.1f} ms |",
         "",
-        "## 3. Performance by Investigative Typology",
+        "## 4. Performance by Investigative Typology",
         "- **T1 (Identification & Associations)**: Intermediaries/strawmen (*laranjas*), corporate ownership trees, beneficial owners.",
         "- **T2 (Criminal Dynamics)**: Modus operandi, money laundering typologies, criminal jargon, asset concealment tactics.",
         "- **T3 (Tracking & Chronology)**: Asset flow trails, wire transfer sequences, chronological timeline of suspicious activities.",
         "",
         _format_aggregate_table("Typology Breakdown", summary.by_typology),
-        "## 4. Performance by Complexity Level",
+        "## 5. Performance by Complexity Level",
         "- **C1 (Low / Factual)**: Single-document, literal fact extraction.",
         "- **C2 (Medium / Relational)**: Multi-document aggregation testing retrieval exhaustiveness.",
         "- **C3 (High / Analytical)**: Broad inferential context regarding criminal intent (*mens rea* / *dolo*).",
         "",
         _format_aggregate_table("Complexity Breakdown", summary.by_complexity),
-        "## 5. Typology x Complexity Matrix",
+        "## 6. Typology x Complexity Matrix",
         "",
-        "| Typology | Complexity | Samples | Recall@K | MRR | Token F1 | Faithfulness | Relevance |",
-        "|---|---|---|---|---|---|---|---|",
+        "| Typology | Complexity | Samples | Recall@K | MRR | Token F1 | Faithfulness | Relevance | Context Recall |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
 
     for typ, comp_dict in sorted(summary.matrix.items()):
@@ -99,13 +231,13 @@ def generate_markdown_report(
             lines.append(
                 f"| **{typ}** | **{comp}** | {agg.sample_count} | {agg.mean_recall_at_k:.4f} | "
                 f"{agg.mean_mrr:.4f} | {agg.mean_token_f1:.4f} | {agg.mean_faithfulness:.4f} | "
-                f"{agg.mean_answer_relevance:.4f} |"
+                f"{agg.mean_answer_relevance:.4f} | {agg.mean_context_recall:.4f} |"
             )
 
     lines.extend(
         [
             "",
-            "## 6. Sample-Level Granular Results",
+            "## 7. Sample-Level Granular Results",
             "",
         ]
     )
@@ -187,10 +319,11 @@ def generate_comparison_report(
         f"| **Context Recall (Judge)** | {ov_a.mean_context_recall:.4f} | {ov_b.mean_context_recall:.4f} | {diff(ov_b.mean_context_recall, ov_a.mean_context_recall)} |",
         f"| **Mean Latency (ms)** | {ov_a.mean_latency_ms:.1f} | {ov_b.mean_latency_ms:.1f} | {diff(ov_b.mean_latency_ms, ov_a.mean_latency_ms)} |",
         "",
-        "## 2. Typology Comparison (Recall@K / Faithfulness)",
+        *_format_comparison_config_markdown(summary_a, summary_b),
+        "## 3. Typology Comparison (Recall@K / Faithfulness / Context Recall)",
         "",
-        f"| Typology | {summary_a.pipeline_name} Recall | {summary_b.pipeline_name} Recall | {summary_a.pipeline_name} Faith | {summary_b.pipeline_name} Faith |",
-        "|---|---|---|---|---|",
+        f"| Typology | {summary_a.pipeline_name} Recall | {summary_b.pipeline_name} Recall | {summary_a.pipeline_name} Faith | {summary_b.pipeline_name} Faith | {summary_a.pipeline_name} CtxRec | {summary_b.pipeline_name} CtxRec |",
+        "|---|---|---|---|---|---|---|",
     ]
 
     all_typs = sorted(set(summary_a.by_typology.keys()).union(set(summary_b.by_typology.keys())))
@@ -201,15 +334,17 @@ def generate_comparison_report(
         rec_b = f"{tb.mean_recall_at_k:.4f}" if tb else "N/A"
         f_a = f"{ta.mean_faithfulness:.4f}" if ta else "N/A"
         f_b = f"{tb.mean_faithfulness:.4f}" if tb else "N/A"
-        lines.append(f"| **{typ}** | {rec_a} | {rec_b} | {f_a} | {f_b} |")
+        cr_a = f"{ta.mean_context_recall:.4f}" if ta else "N/A"
+        cr_b = f"{tb.mean_context_recall:.4f}" if tb else "N/A"
+        lines.append(f"| **{typ}** | {rec_a} | {rec_b} | {f_a} | {f_b} | {cr_a} | {cr_b} |")
 
     lines.extend(
         [
             "",
-            "## 3. Complexity Comparison (Recall@K / Faithfulness)",
+            "## 4. Complexity Comparison (Recall@K / Faithfulness / Context Recall)",
             "",
-            f"| Complexity | {summary_a.pipeline_name} Recall | {summary_b.pipeline_name} Recall | {summary_a.pipeline_name} Faith | {summary_b.pipeline_name} Faith |",
-            "|---|---|---|---|---|",
+            f"| Complexity | {summary_a.pipeline_name} Recall | {summary_b.pipeline_name} Recall | {summary_a.pipeline_name} Faith | {summary_b.pipeline_name} Faith | {summary_a.pipeline_name} CtxRec | {summary_b.pipeline_name} CtxRec |",
+            "|---|---|---|---|---|---|---|",
         ]
     )
 
@@ -223,7 +358,9 @@ def generate_comparison_report(
         rec_b = f"{cb.mean_recall_at_k:.4f}" if cb else "N/A"
         f_a = f"{ca.mean_faithfulness:.4f}" if ca else "N/A"
         f_b = f"{cb.mean_faithfulness:.4f}" if cb else "N/A"
-        lines.append(f"| **{comp}** | {rec_a} | {rec_b} | {f_a} | {f_b} |")
+        cr_a = f"{ca.mean_context_recall:.4f}" if ca else "N/A"
+        cr_b = f"{cb.mean_context_recall:.4f}" if cb else "N/A"
+        lines.append(f"| **{comp}** | {rec_a} | {rec_b} | {f_a} | {f_b} | {cr_a} | {cr_b} |")
 
     lines.append("")
     content = "\n".join(lines)

@@ -142,7 +142,8 @@ docker compose run --rm app python -m bench_rag.cli evaluate \
 *(Alias: `--skip-ingest`)*
 
 Outputs generated in `reports/run_default/`:
-- `evaluation_report.md`: Markdown report with global summary, typology breakdown, complexity breakdown, taxonomy matrix, and granular query results.
+- `evaluation_report.html`: Self-contained, responsive HTML report with executive summary, global metrics, typology breakdown, complexity breakdown, taxonomy matrix, and granular query results.
+- `questions/<id>.html`: Granular question report with full prompts, candidate chunks, and LLM judge critique.
 - `run_summary.json`: Complete machine-readable summary.
 - `samples_evaluation.csv`: Tabular sample-level metrics.
 
@@ -168,7 +169,7 @@ docker compose run --rm app python -m bench_rag.cli compare \
 ```
 
 Outputs:
-- `reports/comparison_run/comparison_report.md`: Side-by-side head-to-head comparison table with absolute deltas across all retrieval, lexical, and LLM-judge metrics.
+- `reports/comparison_run/comparison_report.html`: Side-by-side head-to-head HTML comparison table with absolute deltas across all retrieval, lexical, and LLM-judge metrics, plus direct links to individual architecture reports.
 
 ---
 

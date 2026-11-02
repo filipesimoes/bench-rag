@@ -122,6 +122,7 @@ def test_evaluate_skip_indexing_success(
             "--output-dir",
             str(out_dir),
         ],
+        env={"COLUMNS": "200"},
     )
 
     assert result.exit_code == 0
@@ -131,10 +132,14 @@ def test_evaluate_skip_indexing_success(
     mock_build_parser.assert_not_called()
     mock_index_chunks.assert_not_called()
     mock_engine.evaluate.assert_called_once()
+    assert "execution_metadata" in mock_engine.evaluate.call_args.kwargs
+    assert mock_engine.evaluate.call_args.kwargs["execution_metadata"]["pipeline_name"] == "test_pipeline"
     # Reports should be generated, but chunks folder should NOT be exported
-    assert (out_dir / "evaluation_report.md").exists()
+    assert (out_dir / "evaluation_report.html").exists()
+    assert (out_dir / "run_summary.json").exists()
     assert not (out_dir / "chunks").exists()
     assert "Document chunks exported to:" not in result.output
+    assert "Context Recall" in result.output
 
 
 @patch("bench_rag.cli.load_pipeline_config")
@@ -286,9 +291,10 @@ def test_compare_skip_indexing_success(
     assert "col_a" in result.output
     assert "col_b" in result.output
     # Reports generated
-    assert (out_dir / "comparison_report.md").exists()
+    assert (out_dir / "comparison_report.html").exists()
     assert not (out_dir / "chunks").exists()
     assert "Document chunks exported to:" not in result.output
+    assert "Context Recall" in result.output
 
 
 @patch("bench_rag.cli.load_pipeline_config")

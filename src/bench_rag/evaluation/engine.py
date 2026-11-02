@@ -1,7 +1,9 @@
 """Evaluation engine executing benchmark questions and computing aggregated metrics."""
 
 import csv
+import logging
 from pathlib import Path
+from typing import Any
 
 from bench_rag.core.evaluator import (
     EvaluationEngine,
@@ -10,7 +12,10 @@ from bench_rag.core.evaluator import (
     GroundTruthItem,
     SampleEvaluation,
 )
-from bench_rag.core.pipeline import RAGPipeline
+from bench_rag.core.pipeline import RAGPipeline, RAGResponse
+
+logger = logging.getLogger(__name__)
+from bench_rag.evaluation.metadata import extract_execution_metadata
 from bench_rag.evaluation.metrics.citation import compute_citation_metrics
 from bench_rag.evaluation.metrics.lexical import compute_lexical_metrics
 from bench_rag.evaluation.metrics.llm_judge import LLMJudge, get_judge
@@ -80,6 +85,8 @@ class StandardEvaluationEngine(EvaluationEngine):
         judge_enable_thinking: bool | None = None,
         judge_dialect: str | None = None,
         judge_max_tokens: int | None = None,
+        judge_timeout: float | None = None,
+        judge_max_retries: int | None = None,
     ):
         if judge is not None:
             self.judge = judge
@@ -92,6 +99,8 @@ class StandardEvaluationEngine(EvaluationEngine):
                 enable_thinking=judge_enable_thinking,
                 dialect=judge_dialect,
                 max_tokens=judge_max_tokens,
+                timeout=judge_timeout,
+                max_retries=judge_max_retries,
             )
 
     def evaluate(
@@ -100,6 +109,7 @@ class StandardEvaluationEngine(EvaluationEngine):
         pipeline: RAGPipeline,
         top_k: int | None = None,
         progress_callback: EvaluationProgressCallback | None = None,
+        execution_metadata: dict[str, Any] | None = None,
     ) -> EvaluationSummary:
         """Run inference and evaluate all metrics across the dataset."""
         sample_evaluations: list[SampleEvaluation] = []
@@ -110,8 +120,27 @@ class StandardEvaluationEngine(EvaluationEngine):
             if progress_callback:
                 progress_callback(idx, total, item, "rag_query")
 
-            # 1. Execute RAG pipeline
-            response = pipeline.query(item.question, top_k=effective_k)
+            # 1. Execute RAG pipeline with error resilience
+            try:
+                response = pipeline.query(item.question, top_k=effective_k)
+            except Exception as e:  # noqa: BLE001
+                logger.error(
+                    "RAG query execution failed for question %s: %s (%s). Falling back to empty response.",
+                    item.id,
+                    e,
+                    type(e).__name__,
+                )
+                response = RAGResponse(
+                    question=item.question,
+                    answer=f"[RAG pipeline error: {e}]",
+                    retrieved_chunks=[],
+                    referenced_inquiries=[],
+                    cited_inquiries=[],
+                    raw_answer="",
+                    latency_ms=0.0,
+                    pipeline_name=getattr(pipeline, "name", "unknown_pipeline"),
+                    metadata={"error": str(e)},
+                )
 
             # 2. Retrieval metrics against ground truth references
             retrieval_res = compute_retrieval_metrics(
@@ -160,7 +189,14 @@ class StandardEvaluationEngine(EvaluationEngine):
                 progress_callback(idx, total, item, "completed")
 
         # 5. Aggregate across taxonomies
+        meta = execution_metadata or extract_execution_metadata(
+            pipeline=pipeline,
+            judge=self.judge,
+            top_k=effective_k,
+            total_samples=total,
+        )
         return build_evaluation_summary(
             pipeline_name=pipeline.name,
             samples=sample_evaluations,
+            execution_metadata=meta,
         )

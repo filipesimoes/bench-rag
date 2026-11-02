@@ -16,7 +16,7 @@ from bench_rag.reporting import (
     export_samples_csv,
     generate_all_question_reports,
     generate_comparison_report,
-    generate_markdown_report,
+    generate_html_report,
 )
 from bench_rag.vector_stores import MemoryVectorStore
 
@@ -83,17 +83,17 @@ def test_full_pipeline_e2e(tmp_path: Path):
     assert set(summary_dense.by_complexity.keys()) == {"C1", "C2", "C3"}
 
     # 7. Reporting
-    md_report = generate_markdown_report(summary_dense, output_path=reports_dir / "dense_report.md")
-    assert "Executive Summary" in md_report
-    assert (reports_dir / "dense_report.md").exists()
+    html_report = generate_html_report(summary_dense, output_path=reports_dir / "dense_report.html")
+    assert "Executive Summary" in html_report
+    assert (reports_dir / "dense_report.html").exists()
 
     comp_report = generate_comparison_report(
         summary_dense,
         summary_hybrid,
-        output_path=reports_dir / "comparison.md",
+        output_path=reports_dir / "comparison.html",
     )
     assert "Architecture Comparison" in comp_report
-    assert (reports_dir / "comparison.md").exists()
+    assert (reports_dir / "comparison.html").exists()
 
     json_file = reports_dir / "summary.json"
     export_evaluation_json(summary_dense, json_file)
@@ -106,11 +106,11 @@ def test_full_pipeline_e2e(tmp_path: Path):
     q_dir = reports_dir / "questions"
     generated_q_files = generate_all_question_reports(summary_dense, output_dir=q_dir)
     assert len(generated_q_files) == 9
-    assert (q_dir / "GT-T1-C1.md").exists()
-    q1_text = (q_dir / "GT-T1-C1.md").read_text(encoding="utf-8")
-    assert "# Benchmark Sample Report: `GT-T1-C1`" in q1_text
+    assert (q_dir / "GT-T1-C1.html").exists()
+    q1_text = (q_dir / "GT-T1-C1.html").read_text(encoding="utf-8")
+    assert "Benchmark Sample Report: <code>GT-T1-C1</code>" in q1_text
     assert "Executed Prompts" in q1_text
-    assert "Retrieval & Chunks Breakdown" in q1_text
+    assert "Retrieval &amp; Chunks Breakdown" in q1_text
 
     # Chunks export
     chunks_dir = reports_dir / "chunks"

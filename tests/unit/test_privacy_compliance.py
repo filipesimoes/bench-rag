@@ -54,7 +54,7 @@ def test_no_real_sensitive_data_in_code_or_tests():
                 # Skip this test file and non-text artifacts
                 if file_path.resolve() == Path(__file__).resolve():
                     continue
-                if file_path.suffix not in {".py", ".yaml", ".yml", ".json", ".md", ".sh"}:
+                if file_path.suffix not in {".py", ".yaml", ".yml", ".json", ".md", ".sh", ".html"}:
                     continue
 
                 try:

@@ -14,6 +14,7 @@ from bench_rag.core.parser import Document, DocumentParser
 from bench_rag.core.vector_store import VectorStore
 from bench_rag.embeddings import get_embedding_model
 from bench_rag.evaluation.engine import StandardEvaluationEngine, load_ground_truth_csv
+from bench_rag.evaluation.metadata import extract_execution_metadata
 from bench_rag.parsers import get_parser
 from bench_rag.pipelines import build_pipeline_from_config
 from bench_rag.reporting import (
@@ -23,7 +24,7 @@ from bench_rag.reporting import (
     format_file_size,
     generate_all_question_reports,
     generate_comparison_report,
-    generate_markdown_report,
+    generate_html_report,
     track_embeddings,
     track_files,
     track_indexing,
@@ -364,6 +365,16 @@ def evaluate(
         judge_enable_thinking=cfg.judge_enable_thinking,
         judge_dialect=cfg.judge_dialect,
         judge_max_tokens=cfg.judge_max_tokens,
+        judge_timeout=cfg.judge_timeout,
+        judge_max_retries=cfg.max_retries,
+    )
+    exec_meta = extract_execution_metadata(
+        config=cfg,
+        pipeline=pipeline,
+        judge=engine.judge,
+        top_k=effective_top_k,
+        benchmark_csv=benchmark_csv,
+        total_samples=len(dataset),
     )
     with track_queries(
         len(dataset),
@@ -375,20 +386,21 @@ def evaluate(
             pipeline=pipeline,
             top_k=effective_top_k,
             progress_callback=tracker.evaluation_callback,
+            execution_metadata=exec_meta,
         )
 
     # Save reports
     out_p = Path(output_dir)
-    md_file = out_p / "evaluation_report.md"
+    html_file = out_p / "evaluation_report.html"
     json_file = out_p / "run_summary.json"
     csv_file = out_p / "samples_evaluation.csv"
     questions_dir = out_p / "questions"
     chunks_dir = out_p / "chunks"
 
-    generate_markdown_report(summary, output_path=md_file, question_rel_dir="questions")
+    generate_html_report(summary, output_path=html_file, question_rel_dir="questions")
     export_evaluation_json(summary, output_path=json_file)
     export_samples_csv(summary, output_path=csv_file)
-    generate_all_question_reports(summary, output_dir=questions_dir)
+    generate_all_question_reports(summary, output_dir=questions_dir, main_report_href="../evaluation_report.html")
     if chunks:
         export_document_chunks(chunks=chunks, output_dir=chunks_dir, documents=all_docs)
 
@@ -402,6 +414,7 @@ def evaluate(
     t.add_column("Token F1", justify="right")
     t.add_column("Faithfulness", justify="right", style="yellow")
     t.add_column("Relevance", justify="right", style="yellow")
+    t.add_column("Context Recall", justify="right", style="yellow")
     t.add_column("Latency (ms)", justify="right")
 
     t.add_row(
@@ -412,6 +425,7 @@ def evaluate(
         f"{ov.mean_token_f1:.4f}",
         f"{ov.mean_faithfulness:.4f}",
         f"{ov.mean_answer_relevance:.4f}",
+        f"{ov.mean_context_recall:.4f}",
         f"{ov.mean_latency_ms:.1f}",
     )
 
@@ -424,6 +438,7 @@ def evaluate(
             f"{agg.mean_token_f1:.4f}",
             f"{agg.mean_faithfulness:.4f}",
             f"{agg.mean_answer_relevance:.4f}",
+            f"{agg.mean_context_recall:.4f}",
             f"{agg.mean_latency_ms:.1f}",
         )
 
@@ -436,12 +451,13 @@ def evaluate(
             f"{agg.mean_token_f1:.4f}",
             f"{agg.mean_faithfulness:.4f}",
             f"{agg.mean_answer_relevance:.4f}",
+            f"{agg.mean_context_recall:.4f}",
             f"{agg.mean_latency_ms:.1f}",
         )
 
     console.print(t)
     console.print(
-        f"[bold green]✓[/bold green] Markdown report written to: [bold cyan]{md_file}[/bold cyan]"
+        f"[bold green]✓[/bold green] HTML report written to: [bold cyan]{html_file}[/bold cyan]"
     )
     console.print(
         f"[bold green]✓[/bold green] JSON summary written to: [bold cyan]{json_file}[/bold cyan]"
@@ -606,6 +622,17 @@ def compare(
         judge_base_url=cfg_a.judge_base_url,
         judge_enable_thinking=cfg_a.judge_enable_thinking,
         judge_dialect=cfg_a.judge_dialect,
+        judge_max_tokens=cfg_a.judge_max_tokens,
+        judge_timeout=cfg_a.judge_timeout,
+        judge_max_retries=cfg_a.max_retries,
+    )
+    exec_meta_a = extract_execution_metadata(
+        config=cfg_a,
+        pipeline=pipe_a,
+        judge=engine_a.judge,
+        top_k=top_k_a,
+        benchmark_csv=benchmark_csv,
+        total_samples=len(dataset),
     )
     with track_queries(
         len(dataset),
@@ -617,6 +644,7 @@ def compare(
             pipeline=pipe_a,
             top_k=top_k_a,
             progress_callback=tracker_a.evaluation_callback,
+            execution_metadata=exec_meta_a,
         )
 
     # Evaluate Pipeline B
@@ -626,6 +654,17 @@ def compare(
         judge_base_url=cfg_b.judge_base_url,
         judge_enable_thinking=cfg_b.judge_enable_thinking,
         judge_dialect=cfg_b.judge_dialect,
+        judge_max_tokens=cfg_b.judge_max_tokens,
+        judge_timeout=cfg_b.judge_timeout,
+        judge_max_retries=cfg_b.max_retries,
+    )
+    exec_meta_b = extract_execution_metadata(
+        config=cfg_b,
+        pipeline=pipe_b,
+        judge=engine_b.judge,
+        top_k=top_k_b,
+        benchmark_csv=benchmark_csv,
+        total_samples=len(dataset),
     )
     with track_queries(
         len(dataset),
@@ -637,27 +676,44 @@ def compare(
             pipeline=pipe_b,
             top_k=top_k_b,
             progress_callback=tracker_b.evaluation_callback,
+            execution_metadata=exec_meta_b,
         )
 
     # Generate comparative reports
     out_p = Path(output_dir)
-    comp_md = out_p / "comparison_report.md"
+    comp_html = out_p / "comparison_report.html"
     q_dir_a = out_p / "questions" / summary_a.pipeline_name
     q_dir_b = out_p / "questions" / summary_b.pipeline_name
+    rep_a_file = out_p / f"{summary_a.pipeline_name}_report.html"
+    rep_b_file = out_p / f"{summary_b.pipeline_name}_report.html"
 
-    generate_comparison_report(summary_a, summary_b, output_path=comp_md)
-    generate_markdown_report(
+    generate_comparison_report(
         summary_a,
-        output_path=out_p / f"{summary_a.pipeline_name}_report.md",
+        summary_b,
+        output_path=comp_html,
+        report_a_href=f"{summary_a.pipeline_name}_report.html",
+        report_b_href=f"{summary_b.pipeline_name}_report.html",
+    )
+    generate_html_report(
+        summary_a,
+        output_path=rep_a_file,
         question_rel_dir=f"questions/{summary_a.pipeline_name}",
     )
-    generate_markdown_report(
+    generate_html_report(
         summary_b,
-        output_path=out_p / f"{summary_b.pipeline_name}_report.md",
+        output_path=rep_b_file,
         question_rel_dir=f"questions/{summary_b.pipeline_name}",
     )
-    generate_all_question_reports(summary_a, output_dir=q_dir_a)
-    generate_all_question_reports(summary_b, output_dir=q_dir_b)
+    generate_all_question_reports(
+        summary_a,
+        output_dir=q_dir_a,
+        main_report_href=f"../../{summary_a.pipeline_name}_report.html",
+    )
+    generate_all_question_reports(
+        summary_b,
+        output_dir=q_dir_b,
+        main_report_href=f"../../{summary_b.pipeline_name}_report.html",
+    )
 
     chunks_export_msg = None
     if chunks_a:
@@ -696,6 +752,11 @@ def compare(
             summary_a.overall.mean_answer_relevance,
             summary_b.overall.mean_answer_relevance,
         ),
+        (
+            "Context Recall",
+            summary_a.overall.mean_context_recall,
+            summary_b.overall.mean_context_recall,
+        ),
         ("Latency (ms)", summary_a.overall.mean_latency_ms, summary_b.overall.mean_latency_ms),
     ]
 
@@ -706,7 +767,7 @@ def compare(
 
     console.print(t)
     console.print(
-        f"[bold green]✓[/bold green] Comparison Markdown report written to: [bold cyan]{comp_md}[/bold cyan]"
+        f"[bold green]✓[/bold green] Comparison HTML report written to: [bold cyan]{comp_html}[/bold cyan]"
     )
     console.print(
         f"[bold green]✓[/bold green] Individual question reports written to: [bold cyan]{out_p / 'questions'}[/bold cyan]"
