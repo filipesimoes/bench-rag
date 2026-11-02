@@ -11,7 +11,7 @@ def compute_retrieval_metrics(
     """Compute Precision@K, Recall@K, HitRate@K, and MRR.
 
     Args:
-        retrieved_inquiries: Ranked list of retrieved document identifiers.
+        retrieved_inquiries: Ranked list of retrieved chunk/document identifiers (one per retrieved chunk).
         ground_truth_references: Expected ground-truth document identifiers.
         k: Cutoff rank.
 
@@ -30,17 +30,17 @@ def compute_retrieval_metrics(
     matches = [doc for doc in top_k_retrieved if doc in clean_gt]
     unique_matches = set(matches)
 
-    # Precision@K
-    effective_k = max(1, min(k, len(top_k_retrieved)) if top_k_retrieved else k)
-    precision = len(unique_matches) / effective_k
+    # Precision@K (chunk-level signal-to-noise ratio over top-k cutoff)
+    effective_k = max(1, k)
+    precision = len(matches) / effective_k
 
-    # Recall@K
+    # Recall@K (document-level coverage of ground truth references)
     recall = len(unique_matches) / len(clean_gt)
 
     # Hit Rate @ K
     hit_rate = 1.0 if unique_matches else 0.0
 
-    # Mean Reciprocal Rank (MRR)
+    # Mean Reciprocal Rank (MRR) — rank of first relevant chunk in 1..k
     mrr = 0.0
     for rank, doc in enumerate(top_k_retrieved, start=1):
         if doc in clean_gt:

@@ -11,6 +11,7 @@ from bench_rag.core.pipeline import RAGPipeline, RAGResponse
 from bench_rag.core.reranker import Reranker
 from bench_rag.core.structured_output import StructuredResponseParser
 from bench_rag.core.vector_store import SearchResult, VectorStore
+from bench_rag.evaluation.metrics.lexical import tokenize_text
 from bench_rag.pipelines.standard_rag import DEFAULT_SYSTEM_PROMPT
 
 
@@ -53,13 +54,16 @@ class HybridRAGPipeline(RAGPipeline):
         return self._name
 
     def _ensure_bm25_index(self) -> None:
-        """Lazily initialize BM25 index from all indexed chunks in vector store."""
-        if self._bm25_index is None:
+        """Lazily initialize or refresh BM25 index from all indexed chunks in vector store."""
+        current_count = self.vector_store.count_chunks(self.collection_name)
+        if self._bm25_index is None or len(self._indexed_chunks) != current_count:
             chunks = self.vector_store.get_all_chunks(self.collection_name)
             self._indexed_chunks = chunks
             if chunks:
-                tokenized_corpus = [c.text.lower().split() for c in chunks]
+                tokenized_corpus = [tokenize_text(c.text) or [""] for c in chunks]
                 self._bm25_index = BM25Okapi(tokenized_corpus)
+            else:
+                self._bm25_index = None
 
     def _format_context(self, results: list[SearchResult]) -> str:
         blocks = []
@@ -70,9 +74,9 @@ class HybridRAGPipeline(RAGPipeline):
         return "\n\n".join(blocks)
 
     def query(self, question: str, top_k: int | None = None) -> RAGResponse:
-        start_time = time.perf_counter()
         effective_k = top_k if top_k is not None else self.top_k
         self._ensure_bm25_index()
+        start_time = time.perf_counter()
 
         # 1. Determine candidate pool size & fetch candidates
         candidate_pool_size = (
@@ -95,7 +99,7 @@ class HybridRAGPipeline(RAGPipeline):
         # 2. BM25 Lexical retrieval
         bm25_ranks: dict[str, int] = {}
         if self._bm25_index and self._indexed_chunks:
-            tokenized_query = question.lower().split()
+            tokenized_query = tokenize_text(question)
             bm25_scores = self._bm25_index.get_scores(tokenized_query)
             # Get top indices
             top_bm25_indices = sorted(

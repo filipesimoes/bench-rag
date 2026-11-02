@@ -22,8 +22,8 @@ def _format_aggregate_table(title: str, aggregates: dict[str, TaxonomyAggregate]
     lines = [
         f"### {title}",
         "",
-        "| Category | Samples | Precision@K | Recall@K | Hit Rate | MRR | Cit. Prec. | Cit. Rec. | ROUGE-L | Token F1 | Faithfulness | Relevance | Context Recall | Latency (ms) |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "| Category | Samples | Precision@K | Recall@K | Hit Rate | MRR | Cit. Prec. | Cit. Rec. | ROUGE-L | Token F1 | Faithfulness | Relevance | Context Recall | Answer Correctness | Latency (ms) |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for cat, agg in aggregates.items():
         lines.append(
@@ -31,7 +31,7 @@ def _format_aggregate_table(title: str, aggregates: dict[str, TaxonomyAggregate]
             f"{agg.mean_hit_rate:.4f} | {agg.mean_mrr:.4f} | {agg.mean_citation_precision:.4f} | {agg.mean_citation_recall:.4f} | "
             f"{agg.mean_rouge_l:.4f} | {agg.mean_token_f1:.4f} | "
             f"{agg.mean_faithfulness:.4f} | {agg.mean_answer_relevance:.4f} | {agg.mean_context_recall:.4f} | "
-            f"{agg.mean_latency_ms:.1f} |"
+            f"{getattr(agg, 'mean_answer_correctness', 0.0):.4f} | {agg.mean_latency_ms:.1f} |"
         )
     lines.append("")
     return "\n".join(lines)
@@ -186,6 +186,7 @@ def generate_markdown_report(
         f"- **Mean Answer Faithfulness (LLM Judge)**: {ov.mean_faithfulness:.4f}",
         f"- **Mean Answer Relevance (LLM Judge)**: {ov.mean_answer_relevance:.4f}",
         f"- **Mean Context Recall (LLM Judge)**: {ov.mean_context_recall:.4f}",
+        f"- **Mean Answer Correctness (LLM Judge)**: {getattr(ov, 'mean_answer_correctness', 0.0):.4f}",
         f"- **Mean Latency**: {ov.mean_latency_ms:.1f} ms",
         "",
         *_format_pipeline_config_markdown(summary),
@@ -206,6 +207,7 @@ def generate_markdown_report(
         f"| LLM-as-a-Judge | Faithfulness (Groundedness) | {ov.mean_faithfulness:.4f} |",
         f"| LLM-as-a-Judge | Answer Relevance | {ov.mean_answer_relevance:.4f} |",
         f"| LLM-as-a-Judge | Context Recall | {ov.mean_context_recall:.4f} |",
+        f"| LLM-as-a-Judge | Answer Correctness | {getattr(ov, 'mean_answer_correctness', 0.0):.4f} |",
         f"| Performance | Mean Latency | {ov.mean_latency_ms:.1f} ms |",
         "",
         "## 4. Performance by Investigative Typology",
@@ -222,8 +224,8 @@ def generate_markdown_report(
         _format_aggregate_table("Complexity Breakdown", summary.by_complexity),
         "## 6. Typology x Complexity Matrix",
         "",
-        "| Typology | Complexity | Samples | Recall@K | MRR | Token F1 | Faithfulness | Relevance | Context Recall |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| Typology | Complexity | Samples | Recall@K | MRR | Token F1 | Faithfulness | Relevance | Context Recall | Answer Correctness |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
 
     for typ, comp_dict in sorted(summary.matrix.items()):
@@ -231,7 +233,8 @@ def generate_markdown_report(
             lines.append(
                 f"| **{typ}** | **{comp}** | {agg.sample_count} | {agg.mean_recall_at_k:.4f} | "
                 f"{agg.mean_mrr:.4f} | {agg.mean_token_f1:.4f} | {agg.mean_faithfulness:.4f} | "
-                f"{agg.mean_answer_relevance:.4f} | {agg.mean_context_recall:.4f} |"
+                f"{agg.mean_answer_relevance:.4f} | {agg.mean_context_recall:.4f} | "
+                f"{getattr(agg, 'mean_answer_correctness', 0.0):.4f} |"
             )
 
     lines.extend(
@@ -246,6 +249,7 @@ def generate_markdown_report(
         safe_id = re.sub(r"[^\w\-]", "_", s.item.id)
         cit = s.citation
         cit_str = f"`{'; '.join(s.response.cited_inquiries)}`" if s.response.cited_inquiries else "*None*"
+        ans_corr = getattr(s.llm_judge, "answer_correctness", 0.0)
         sample_lines = [
             f"### Query `{s.item.id}` [{s.item.typology} / {s.item.complexity}]",
             f"**Question**: {s.item.question}",
@@ -260,8 +264,8 @@ def generate_markdown_report(
                 if cit
                 else "- **Citation Metrics**: *N/A*"
             ),
-            f"- **ROUGE-L**: {s.lexical.rouge_l:.4f} | **Token F1**: {s.lexical.token_f1:.4f}",
-            f"- **Faithfulness**: {s.llm_judge.faithfulness:.4f} | **Relevance**: {s.llm_judge.answer_relevance:.4f} | **Context Recall**: {s.llm_judge.context_recall:.4f}",
+            f"- **ROUGE-L**: {s.lexical.rouge_l:.4f} | **Token F1**: {s.lexical.token_f1:.4f} | **BLEU-4**: {s.lexical.bleu_4:.4f}",
+            f"- **Faithfulness**: {s.llm_judge.faithfulness:.4f} | **Relevance**: {s.llm_judge.answer_relevance:.4f} | **Context Recall**: {s.llm_judge.context_recall:.4f} | **Answer Correctness**: {ans_corr:.4f}",
             "",
             f"**Generated Answer**:\n> {s.response.answer}",
             "",
@@ -301,6 +305,9 @@ def generate_comparison_report(
         sign = "+" if d >= 0 else ""
         return f"{sign}{d:.4f}"
 
+    ac_a = getattr(ov_a, "mean_answer_correctness", 0.0)
+    ac_b = getattr(ov_b, "mean_answer_correctness", 0.0)
+
     lines = [
         f"# RAG Benchmark Architecture Comparison: `{summary_a.pipeline_name}` vs. `{summary_b.pipeline_name}`",
         "",
@@ -312,18 +319,23 @@ def generate_comparison_report(
         f"| **Retrieval Recall@K** | {ov_a.mean_recall_at_k:.4f} | {ov_b.mean_recall_at_k:.4f} | {diff(ov_b.mean_recall_at_k, ov_a.mean_recall_at_k)} |",
         f"| **Retrieval Hit Rate** | {ov_a.mean_hit_rate:.4f} | {ov_b.mean_hit_rate:.4f} | {diff(ov_b.mean_hit_rate, ov_a.mean_hit_rate)} |",
         f"| **Retrieval MRR** | {ov_a.mean_mrr:.4f} | {ov_b.mean_mrr:.4f} | {diff(ov_b.mean_mrr, ov_a.mean_mrr)} |",
+        f"| **Citation Precision** | {ov_a.mean_citation_precision:.4f} | {ov_b.mean_citation_precision:.4f} | {diff(ov_b.mean_citation_precision, ov_a.mean_citation_precision)} |",
+        f"| **Citation Recall** | {ov_a.mean_citation_recall:.4f} | {ov_b.mean_citation_recall:.4f} | {diff(ov_b.mean_citation_recall, ov_a.mean_citation_recall)} |",
+        f"| **Citation Hallucination Rate** | {ov_a.mean_citation_hallucination_rate:.4f} | {ov_b.mean_citation_hallucination_rate:.4f} | {diff(ov_b.mean_citation_hallucination_rate, ov_a.mean_citation_hallucination_rate)} |",
         f"| **ROUGE-L** | {ov_a.mean_rouge_l:.4f} | {ov_b.mean_rouge_l:.4f} | {diff(ov_b.mean_rouge_l, ov_a.mean_rouge_l)} |",
         f"| **Token F1** | {ov_a.mean_token_f1:.4f} | {ov_b.mean_token_f1:.4f} | {diff(ov_b.mean_token_f1, ov_a.mean_token_f1)} |",
+        f"| **BLEU-4** | {ov_a.mean_bleu_4:.4f} | {ov_b.mean_bleu_4:.4f} | {diff(ov_b.mean_bleu_4, ov_a.mean_bleu_4)} |",
         f"| **Faithfulness (Judge)** | {ov_a.mean_faithfulness:.4f} | {ov_b.mean_faithfulness:.4f} | {diff(ov_b.mean_faithfulness, ov_a.mean_faithfulness)} |",
         f"| **Relevance (Judge)** | {ov_a.mean_answer_relevance:.4f} | {ov_b.mean_answer_relevance:.4f} | {diff(ov_b.mean_answer_relevance, ov_a.mean_answer_relevance)} |",
         f"| **Context Recall (Judge)** | {ov_a.mean_context_recall:.4f} | {ov_b.mean_context_recall:.4f} | {diff(ov_b.mean_context_recall, ov_a.mean_context_recall)} |",
+        f"| **Answer Correctness (Judge)** | {ac_a:.4f} | {ac_b:.4f} | {diff(ac_b, ac_a)} |",
         f"| **Mean Latency (ms)** | {ov_a.mean_latency_ms:.1f} | {ov_b.mean_latency_ms:.1f} | {diff(ov_b.mean_latency_ms, ov_a.mean_latency_ms)} |",
         "",
         *_format_comparison_config_markdown(summary_a, summary_b),
-        "## 3. Typology Comparison (Recall@K / Faithfulness / Context Recall)",
+        "## 3. Typology Comparison (Recall@K / Faithfulness / Context Recall / Answer Correctness)",
         "",
-        f"| Typology | {summary_a.pipeline_name} Recall | {summary_b.pipeline_name} Recall | {summary_a.pipeline_name} Faith | {summary_b.pipeline_name} Faith | {summary_a.pipeline_name} CtxRec | {summary_b.pipeline_name} CtxRec |",
-        "|---|---|---|---|---|---|---|",
+        f"| Typology | {summary_a.pipeline_name} Recall | {summary_b.pipeline_name} Recall | {summary_a.pipeline_name} Faith | {summary_b.pipeline_name} Faith | {summary_a.pipeline_name} CtxRec | {summary_b.pipeline_name} CtxRec | {summary_a.pipeline_name} AnsCorr | {summary_b.pipeline_name} AnsCorr |",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
 
     all_typs = sorted(set(summary_a.by_typology.keys()).union(set(summary_b.by_typology.keys())))
@@ -336,15 +348,19 @@ def generate_comparison_report(
         f_b = f"{tb.mean_faithfulness:.4f}" if tb else "N/A"
         cr_a = f"{ta.mean_context_recall:.4f}" if ta else "N/A"
         cr_b = f"{tb.mean_context_recall:.4f}" if tb else "N/A"
-        lines.append(f"| **{typ}** | {rec_a} | {rec_b} | {f_a} | {f_b} | {cr_a} | {cr_b} |")
+        ac_ta = f"{getattr(ta, 'mean_answer_correctness', 0.0):.4f}" if ta else "N/A"
+        ac_tb = f"{getattr(tb, 'mean_answer_correctness', 0.0):.4f}" if tb else "N/A"
+        lines.append(
+            f"| **{typ}** | {rec_a} | {rec_b} | {f_a} | {f_b} | {cr_a} | {cr_b} | {ac_ta} | {ac_tb} |"
+        )
 
     lines.extend(
         [
             "",
-            "## 4. Complexity Comparison (Recall@K / Faithfulness / Context Recall)",
+            "## 4. Complexity Comparison (Recall@K / Faithfulness / Context Recall / Answer Correctness)",
             "",
-            f"| Complexity | {summary_a.pipeline_name} Recall | {summary_b.pipeline_name} Recall | {summary_a.pipeline_name} Faith | {summary_b.pipeline_name} Faith | {summary_a.pipeline_name} CtxRec | {summary_b.pipeline_name} CtxRec |",
-            "|---|---|---|---|---|---|---|",
+            f"| Complexity | {summary_a.pipeline_name} Recall | {summary_b.pipeline_name} Recall | {summary_a.pipeline_name} Faith | {summary_b.pipeline_name} Faith | {summary_a.pipeline_name} CtxRec | {summary_b.pipeline_name} CtxRec | {summary_a.pipeline_name} AnsCorr | {summary_b.pipeline_name} AnsCorr |",
+            "|---|---|---|---|---|---|---|---|---|",
         ]
     )
 
@@ -360,7 +376,11 @@ def generate_comparison_report(
         f_b = f"{cb.mean_faithfulness:.4f}" if cb else "N/A"
         cr_a = f"{ca.mean_context_recall:.4f}" if ca else "N/A"
         cr_b = f"{cb.mean_context_recall:.4f}" if cb else "N/A"
-        lines.append(f"| **{comp}** | {rec_a} | {rec_b} | {f_a} | {f_b} | {cr_a} | {cr_b} |")
+        ac_ca = f"{getattr(ca, 'mean_answer_correctness', 0.0):.4f}" if ca else "N/A"
+        ac_cb = f"{getattr(cb, 'mean_answer_correctness', 0.0):.4f}" if cb else "N/A"
+        lines.append(
+            f"| **{comp}** | {rec_a} | {rec_b} | {f_a} | {f_b} | {cr_a} | {cr_b} | {ac_ca} | {ac_cb} |"
+        )
 
     lines.append("")
     content = "\n".join(lines)
@@ -392,6 +412,7 @@ def generate_question_report(
     comp_desc = COMPLEXITY_DESCRIPTIONS.get(item.complexity, item.complexity)
     reranker_name = resp.metadata.get("reranker") or "None (Direct Retrieval)"
     cited_str = f"`{'; '.join(resp.cited_inquiries)}`" if resp.cited_inquiries else "*None*"
+    ans_corr = getattr(judge, "answer_correctness", 0.0)
 
     lines = [
         f"# Benchmark Sample Report: `{item.id}`",
@@ -411,10 +432,10 @@ def generate_question_report(
         "",
         "| Metric Category | Metric | Score | Description |",
         "|---|---|---|---|",
-        f"| Retrieval | Precision@K | {ret.precision_at_k:.4f} | Proportion of retrieved inquiries that are relevant |",
+        f"| Retrieval | Precision@K | {ret.precision_at_k:.4f} | Proportion of retrieved chunks in top-K belonging to relevant inquiries |",
         f"| Retrieval | Recall@K | {ret.recall_at_k:.4f} | Coverage of target ground truth inquiry references |",
         f"| Retrieval | Hit Rate@K | {ret.hit_rate:.4f} | At least one relevant inquiry document identified |",
-        f"| Retrieval | Mean Reciprocal Rank (MRR) | {ret.mrr:.4f} | Reciprocal rank of the first relevant inquiry document |",
+        f"| Retrieval | Mean Reciprocal Rank (MRR) | {ret.mrr:.4f} | Reciprocal rank of the first relevant chunk |",
         (
             f"| Citation Attribution | Citation Precision | {cit.precision:.4f} | Proportion of generator-cited inquiries present in ground truth |"
             if cit
@@ -435,7 +456,8 @@ def generate_question_report(
         f"| Lexical Overlap | BLEU-4 | {lex.bleu_4:.4f} | 4-gram precision against ground truth reference |",
         f"| LLM-as-a-Judge | Faithfulness (Groundedness) | {judge.faithfulness:.4f} | Factual claims grounded strictly in retrieved context |",
         f"| LLM-as-a-Judge | Answer Relevance | {judge.answer_relevance:.4f} | Direct alignment with the investigative query intent |",
-        f"| LLM-as-a-Judge | Context Recall | {judge.context_recall:.4f} | Presence of key investigative facts from reference answer |",
+        f"| LLM-as-a-Judge | Context Recall | {judge.context_recall:.4f} | Presence of key investigative facts from reference answer in retrieved context |",
+        f"| LLM-as-a-Judge | Answer Correctness | {ans_corr:.4f} | Presence of key investigative facts from reference answer in generated answer |",
         "",
     ]
 

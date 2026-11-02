@@ -6,6 +6,24 @@ from bench_rag.core.chunker import Chunk, Chunker
 from bench_rag.core.parser import Document
 
 
+def resolve_page_number(
+    start_char: int,
+    pages_meta: list[dict[str, Any]] | None,
+) -> int | None:
+    """Resolve 1-indexed page number from character offset and document pages metadata."""
+    if not pages_meta:
+        return None
+    cursor = 0
+    for entry in pages_meta:
+        char_count = int(entry.get("char_count", 0))
+        page_num = entry.get("page_number")
+        if start_char < cursor + char_count + 2:
+            return int(page_num) if page_num is not None else None
+        cursor += char_count + 2
+    last_page = pages_meta[-1].get("page_number")
+    return int(last_page) if last_page is not None else None
+
+
 class RecursiveCharacterChunker(Chunker):
     """Splits documents recursively based on separators, target chunk size, and overlap."""
 
@@ -48,16 +66,32 @@ class RecursiveCharacterChunker(Chunker):
 
         chunks: list[Chunk] = []
         current_pos = 0
+        pages_meta = doc_metadata.get("pages") if isinstance(doc_metadata, dict) else None
 
         for idx, chunk_text in enumerate(merged_chunks):
             start_pos = text.find(chunk_text, current_pos)
             if start_pos == -1:
-                start_pos = current_pos
-            end_pos = start_pos + len(chunk_text)
+                # When _merge_splits joins paragraphs/lines with a single space,
+                # locate the start offset via the chunk's leading prefix token sequence.
+                prefix = chunk_text[: min(40, len(chunk_text))].split("\n")[0].strip()
+                if prefix:
+                    start_pos = text.find(prefix, current_pos)
+                if start_pos == -1:
+                    first_word = chunk_text.split()[0] if chunk_text.split() else ""
+                    if first_word:
+                        start_pos = text.find(first_word, current_pos)
+                if start_pos == -1:
+                    start_pos = current_pos
+            end_pos = min(len(text), start_pos + len(chunk_text))
             current_pos = max(0, end_pos - self.chunk_overlap)
 
             chunk_meta = dict(doc_metadata)
+            chunk_meta.pop("pages", None)
             chunk_meta["chunk_index"] = idx
+            if "page_number" not in chunk_meta:
+                resolved_page = resolve_page_number(start_pos, pages_meta)
+                if resolved_page is not None:
+                    chunk_meta["page_number"] = resolved_page
 
             chunks.append(
                 Chunk(

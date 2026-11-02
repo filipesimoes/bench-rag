@@ -71,6 +71,8 @@ def test_mock_reranker_reordering_and_metadata():
     assert top_chunk.metadata["initial_retrieval_rank"] == 2
     assert top_chunk.metadata["initial_retrieval_score"] == 0.80
     assert reranked[0].score > 0.80
+    # Verify original chunk in input results was not mutated in place
+    assert "initial_retrieval_rank" not in results[1].chunk.metadata
 
 
 def test_mock_reranker_empty():

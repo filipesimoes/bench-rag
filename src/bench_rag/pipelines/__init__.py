@@ -34,6 +34,7 @@ def build_pipeline_from_config(config: PipelineConfig) -> RAGPipeline:
         temperature=config.generator_temperature,
         timeout=config.generator_timeout,
         max_retries=config.max_retries,
+        response_format=config.generator_response_format,
     )
     reranker = get_reranker(
         reranker_type=config.reranker_type,

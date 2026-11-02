@@ -65,12 +65,15 @@ class PyMuPDFParser(DocumentParser):
                     pages_blocks, page_dimensions
                 )
 
-                for page_idx, text in enumerate(cleaned_pages, start=1):
+                cleaned_page_nums = meta_extras.pop("cleaned_page_numbers", None) or list(
+                    range(1, len(cleaned_pages) + 1)
+                )
+                for text, orig_page_num in zip(cleaned_pages, cleaned_page_nums):
                     if text.strip():
                         pages_content.append(text)
                         pages_metadata.append(
                             {
-                                "page_number": page_idx,
+                                "page_number": orig_page_num,
                                 "char_count": len(text),
                             }
                         )

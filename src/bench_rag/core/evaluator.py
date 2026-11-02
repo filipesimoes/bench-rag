@@ -43,7 +43,8 @@ class LLMJudgeMetrics:
 
     faithfulness: float  # Grounding in retrieved context (0.0 - 1.0)
     answer_relevance: float  # Alignment with the query intent (0.0 - 1.0)
-    context_recall: float  # Grounding against reference answer (0.0 - 1.0)
+    context_recall: float  # Presence of reference answer facts in retrieved context (0.0 - 1.0)
+    answer_correctness: float = 0.0  # Presence of reference answer facts in generated answer (0.0 - 1.0)
     critique: str | None = None
     prompt: str | None = None
     system_prompt: str | None = None
@@ -87,6 +88,7 @@ class TaxonomyAggregate:
     mean_answer_relevance: float
     mean_context_recall: float
     mean_latency_ms: float
+    mean_answer_correctness: float = 0.0
     mean_citation_precision: float = 0.0
     mean_citation_recall: float = 0.0
     mean_citation_hallucination_rate: float = 0.0

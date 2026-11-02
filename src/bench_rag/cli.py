@@ -11,7 +11,7 @@ from bench_rag.config import PipelineConfig, load_pipeline_config
 from bench_rag.core.chunker import Chunk
 from bench_rag.core.embedding import EmbeddingModel
 from bench_rag.core.parser import Document, DocumentParser
-from bench_rag.core.vector_store import VectorStore
+from bench_rag.core.vector_store import DistanceMetric, VectorStore
 from bench_rag.embeddings import get_embedding_model
 from bench_rag.evaluation.engine import StandardEvaluationEngine, load_ground_truth_csv
 from bench_rag.evaluation.metadata import extract_execution_metadata
@@ -57,6 +57,27 @@ def _build_parser_from_config(
         preserve_first_header=cfg.preserve_first_header,
         custom_header_patterns=cfg.custom_header_patterns,
         custom_footer_patterns=cfg.custom_footer_patterns,
+    )
+
+
+def _parsers_differ(
+    cfg_a: PipelineConfig, cfg_b: PipelineConfig, clean_override: bool | None = None
+) -> bool:
+    """Return True if Pipeline A and Pipeline B have different parser or cleaner settings."""
+    clean_a = clean_override if clean_override is not None else cfg_a.clean_headers_footers
+    clean_b = clean_override if clean_override is not None else cfg_b.clean_headers_footers
+    return (
+        cfg_a.parser_type != cfg_b.parser_type
+        or clean_a != clean_b
+        or cfg_a.header_margin != cfg_b.header_margin
+        or cfg_a.footer_margin != cfg_b.footer_margin
+        or cfg_a.detect_repeated_headers != cfg_b.detect_repeated_headers
+        or cfg_a.repeated_header_threshold != cfg_b.repeated_header_threshold
+        or cfg_a.remove_pje_metadata != cfg_b.remove_pje_metadata
+        or cfg_a.remove_page_numbers != cfg_b.remove_page_numbers
+        or cfg_a.preserve_first_header != cfg_b.preserve_first_header
+        or cfg_a.custom_header_patterns != cfg_b.custom_header_patterns
+        or cfg_a.custom_footer_patterns != cfg_b.custom_footer_patterns
     )
 
 
@@ -144,6 +165,7 @@ def _index_chunks_with_progress(
     collection_name: str,
     vector_store_type: str,
     no_progress: bool = False,
+    distance_metric: str = "cosine",
 ) -> list[list[float]]:
     """Generate embeddings and index chunks with multi-line, batch-level progress reporting."""
     if not chunks:
@@ -174,6 +196,7 @@ def _index_chunks_with_progress(
         vector_store.create_collection(
             collection_name=collection_name,
             dimension=embedding_model.dimension,
+            metric=DistanceMetric(distance_metric),
         )
 
         def on_index_progress(completed: int, total: int) -> None:
@@ -254,6 +277,7 @@ def index(
         collection_name=cfg.collection_name,
         vector_store_type=cfg.vector_store_type,
         no_progress=no_progress,
+        distance_metric=cfg.distance_metric,
     )
 
     console.print(
@@ -337,6 +361,7 @@ def evaluate(
             collection_name=cfg.collection_name,
             vector_store_type=cfg.vector_store_type,
             no_progress=no_progress,
+            distance_metric=cfg.distance_metric,
         )
     else:
         chunk_count = pipeline.vector_store.count_chunks(cfg.collection_name)
@@ -415,6 +440,7 @@ def evaluate(
     t.add_column("Faithfulness", justify="right", style="yellow")
     t.add_column("Relevance", justify="right", style="yellow")
     t.add_column("Context Recall", justify="right", style="yellow")
+    t.add_column("Ans. Correctness", justify="right", style="yellow")
     t.add_column("Latency (ms)", justify="right")
 
     t.add_row(
@@ -426,6 +452,7 @@ def evaluate(
         f"{ov.mean_faithfulness:.4f}",
         f"{ov.mean_answer_relevance:.4f}",
         f"{ov.mean_context_recall:.4f}",
+        f"{ov.mean_answer_correctness:.4f}",
         f"{ov.mean_latency_ms:.1f}",
     )
 
@@ -439,6 +466,7 @@ def evaluate(
             f"{agg.mean_faithfulness:.4f}",
             f"{agg.mean_answer_relevance:.4f}",
             f"{agg.mean_context_recall:.4f}",
+            f"{agg.mean_answer_correctness:.4f}",
             f"{agg.mean_latency_ms:.1f}",
         )
 
@@ -452,6 +480,7 @@ def evaluate(
             f"{agg.mean_faithfulness:.4f}",
             f"{agg.mean_answer_relevance:.4f}",
             f"{agg.mean_context_recall:.4f}",
+            f"{agg.mean_answer_correctness:.4f}",
             f"{agg.mean_latency_ms:.1f}",
         )
 
@@ -521,13 +550,14 @@ def compare(
     dataset = load_ground_truth_csv(benchmark_csv)
 
     all_docs: list[Document] = []
+    all_docs_b: list[Document] = []
     chunks_a: list[Chunk] = []
     chunks_b: list[Chunk] = []
     distinct_chunking = False
 
     if not skip_indexing:
         # Ingest PDFs
-        parser = _build_parser_from_config(cfg_a, clean_override=clean_headers_footers)
+        parser_a = _build_parser_from_config(cfg_a, clean_override=clean_headers_footers)
         chunker_a = get_chunker(
             chunker_type=cfg_a.chunker_type,
             chunk_size=cfg_a.chunk_size,
@@ -549,14 +579,31 @@ def compare(
             for pdf in pdf_files:
                 size_str = format_file_size(pdf.stat().st_size)
                 tracker.update_detail(f"File: {pdf.name} ({size_str})")
-                all_docs.extend(parser.parse(pdf))
+                all_docs.extend(parser_a.parse(pdf))
                 tracker.advance(1)
 
         chunks_a = chunker_a.chunk(all_docs)
         texts_a = [c.text for c in chunks_a]
 
+        distinct_parsing = _parsers_differ(cfg_a, cfg_b, clean_override=clean_headers_footers)
+        if distinct_parsing:
+            parser_b = _build_parser_from_config(cfg_b, clean_override=clean_headers_footers)
+            with track_files(
+                pdf_files,
+                description=f"[bold magenta]Ingesting PDF reports for Pipeline B ({cfg_b.name})[/bold magenta]",
+                no_progress=no_progress,
+            ) as tracker_b_ingest:
+                for pdf in pdf_files:
+                    size_str = format_file_size(pdf.stat().st_size)
+                    tracker_b_ingest.update_detail(f"File: {pdf.name} ({size_str})")
+                    all_docs_b.extend(parser_b.parse(pdf))
+                    tracker_b_ingest.advance(1)
+        else:
+            all_docs_b = all_docs
+
         distinct_chunking = (
-            cfg_a.chunker_type != cfg_b.chunker_type
+            distinct_parsing
+            or cfg_a.chunker_type != cfg_b.chunker_type
             or cfg_a.chunk_size != cfg_b.chunk_size
             or cfg_a.chunk_overlap != cfg_b.chunk_overlap
         )
@@ -566,7 +613,7 @@ def compare(
                 chunk_size=cfg_b.chunk_size,
                 chunk_overlap=cfg_b.chunk_overlap,
             )
-            chunks_b = chunker_b.chunk(all_docs)
+            chunks_b = chunker_b.chunk(all_docs_b)
             texts_b = [c.text for c in chunks_b]
         else:
             chunks_b = chunks_a
@@ -575,7 +622,9 @@ def compare(
         # Index Pipeline A
         emb_a = pipe_a.embedding_model.embed_texts(texts_a)
         pipe_a.vector_store.create_collection(
-            collection_name=cfg_a.collection_name, dimension=pipe_a.embedding_model.dimension
+            collection_name=cfg_a.collection_name,
+            dimension=pipe_a.embedding_model.dimension,
+            metric=DistanceMetric(cfg_a.distance_metric),
         )
         pipe_a.vector_store.add_chunks(
             collection_name=cfg_a.collection_name, chunks=chunks_a, embeddings=emb_a
@@ -584,7 +633,9 @@ def compare(
         # Index Pipeline B
         emb_b = pipe_b.embedding_model.embed_texts(texts_b)
         pipe_b.vector_store.create_collection(
-            collection_name=cfg_b.collection_name, dimension=pipe_b.embedding_model.dimension
+            collection_name=cfg_b.collection_name,
+            dimension=pipe_b.embedding_model.dimension,
+            metric=DistanceMetric(cfg_b.distance_metric),
         )
         pipe_b.vector_store.add_chunks(
             collection_name=cfg_b.collection_name, chunks=chunks_b, embeddings=emb_b
@@ -721,7 +772,7 @@ def compare(
             chunks_dir_a = out_p / "chunks" / summary_a.pipeline_name
             chunks_dir_b = out_p / "chunks" / summary_b.pipeline_name
             export_document_chunks(chunks=chunks_a, output_dir=chunks_dir_a, documents=all_docs)
-            export_document_chunks(chunks=chunks_b, output_dir=chunks_dir_b, documents=all_docs)
+            export_document_chunks(chunks=chunks_b, output_dir=chunks_dir_b, documents=all_docs_b)
             chunks_export_msg = f"{out_p / 'chunks'} (subdiretórios por arquitetura)"
         else:
             chunks_dir = out_p / "chunks"
@@ -744,7 +795,23 @@ def compare(
         ("Recall@K", summary_a.overall.mean_recall_at_k, summary_b.overall.mean_recall_at_k),
         ("Hit Rate", summary_a.overall.mean_hit_rate, summary_b.overall.mean_hit_rate),
         ("MRR", summary_a.overall.mean_mrr, summary_b.overall.mean_mrr),
+        (
+            "Citation Precision",
+            summary_a.overall.mean_citation_precision,
+            summary_b.overall.mean_citation_precision,
+        ),
+        (
+            "Citation Recall",
+            summary_a.overall.mean_citation_recall,
+            summary_b.overall.mean_citation_recall,
+        ),
+        (
+            "Citation Hallucination Rate",
+            summary_a.overall.mean_citation_hallucination_rate,
+            summary_b.overall.mean_citation_hallucination_rate,
+        ),
         ("ROUGE-L", summary_a.overall.mean_rouge_l, summary_b.overall.mean_rouge_l),
+        ("BLEU-4", summary_a.overall.mean_bleu_4, summary_b.overall.mean_bleu_4),
         ("Token F1", summary_a.overall.mean_token_f1, summary_b.overall.mean_token_f1),
         ("Faithfulness", summary_a.overall.mean_faithfulness, summary_b.overall.mean_faithfulness),
         (
@@ -756,6 +823,11 @@ def compare(
             "Context Recall",
             summary_a.overall.mean_context_recall,
             summary_b.overall.mean_context_recall,
+        ),
+        (
+            "Answer Correctness",
+            summary_a.overall.mean_answer_correctness,
+            summary_b.overall.mean_answer_correctness,
         ),
         ("Latency (ms)", summary_a.overall.mean_latency_ms, summary_b.overall.mean_latency_ms),
     ]

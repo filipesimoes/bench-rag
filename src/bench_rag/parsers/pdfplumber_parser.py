@@ -100,12 +100,30 @@ class PDFPlumberParser(DocumentParser):
 
             if self.cleaner is not None and isinstance(self.cleaner, HeaderFooterCleaner):
                 cleaned_pages, meta_extras = self.cleaner.clean_document_pages_text(pages_content)
+                cleaned_page_nums = meta_extras.pop("cleaned_page_numbers", None) or list(
+                    range(1, len(cleaned_pages) + 1)
+                )
+                cleaned_pages_meta: list[dict[str, Any]] = []
+                for idx_c, c_text in enumerate(cleaned_pages):
+                    orig_idx = (
+                        cleaned_page_nums[idx_c] - 1
+                        if idx_c < len(cleaned_page_nums)
+                        else idx_c
+                    )
+                    base_meta = (
+                        dict(pages_metadata[orig_idx])
+                        if 0 <= orig_idx < len(pages_metadata)
+                        else {"page_number": orig_idx + 1, "table_count": 0}
+                    )
+                    base_meta["char_count"] = len(c_text)
+                    cleaned_pages_meta.append(base_meta)
+
                 full_text = "\n\n".join(cleaned_pages)
                 metadata = {
                     "source_file": path.name,
                     "file_path": str(path.resolve()),
                     "total_pages": len(pdf.pages),
-                    "pages": pages_metadata,
+                    "pages": cleaned_pages_meta,
                     "parser": "pdfplumber",
                 }
                 metadata.update(meta_extras)

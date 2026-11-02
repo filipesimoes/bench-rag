@@ -373,7 +373,16 @@ def test_generate_comparison_report(tmp_path: Path):
     assert "+0.1000" in content  # Delta for recall or precision
     assert "badge-success" in content
     assert "<th class='num'>pipe_a CtxRec</th><th class='num'>pipe_b CtxRec</th>" in content
-    assert "Typology Comparison (Recall@K / Faithfulness / Context Recall)" in content
+    assert "<th class='num'>pipe_a AnsCorr</th><th class='num'>pipe_b AnsCorr</th>" in content
+    assert (
+        "Typology Comparison (Recall@K / Faithfulness / Context Recall / Answer Correctness)"
+        in content
+    )
+    assert "<tr><td><strong>Citation Hallucination Rate</strong></td>" in content
+    assert "<tr><td><strong>BLEU-4</strong></td>" in content
+    assert "<tr><td><strong>Answer Correctness (Judge)</strong></td>" in content
+    # Latency increased from 100.0 to 150.0 (+50.0000), which should be badge-danger (lower_is_better=True)
+    assert "<span class='badge badge-danger'>+50.0000</span>" in content
     assert "<details class=\"metric-guide\">" in content
     assert "Evaluation Metrics Interpretation Guide" in content
 

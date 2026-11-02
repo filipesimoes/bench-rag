@@ -44,32 +44,35 @@ The benchmark partitions queries into three distinct investigative typologies:
 ## 2. Metric Formulations
 
 ### 2.1 Retrieval Metrics
-Let $R_k = [d_1, d_2, \dots, d_k]$ be the ranked list of retrieved inquiry document identifiers at cutoff $k$, and let $G = \{g_1, g_2, \dots, g_m\}$ be the ground-truth set of cited inquiry references (`inquiry_references`).
+Let $C_k = [c_1, c_2, \dots, c_m]$ (where $m \le k$) be the ranked list of retrieved chunks at cutoff $k$, let $\text{doc}(c_i)$ be the normalized source inquiry document identifier of chunk $c_i$, and let $G = \{g_1, g_2, \dots, g_{|G|}\}$ be the ground-truth set of cited inquiry references (`inquiry_references`).
 
-#### Precision@k
+#### Precision@k (Chunk-Level Signal-to-Noise Ratio)
+Measures the fraction of the top-$k$ cutoff window occupied by retrieved chunks that originate from a relevant ground-truth inquiry document:
 $$
-\text{Precision}@k = \frac{|R_k \cap G|}{\min(k, |R_k|)}
+\text{Precision}@k = \frac{|\{ i \in \{1, \dots, m\} \mid \text{doc}(c_i) \in G \}|}{\max(1, k)}
 $$
 
-#### Recall@k
+#### Recall@k (Document-Level Ground-Truth Coverage)
+Measures the fraction of unique ground-truth inquiry documents that are represented by at least one chunk in $C_k$:
 $$
-\text{Recall}@k = \frac{|R_k \cap G|}{|G|}
+\text{Recall}@k = \frac{|\{ \text{doc}(c_i) \mid c_i \in C_k \} \cap G|}{|G|}
 $$
 
 #### Hit Rate@k
 $$
-\text{HitRate}@k = \begin{cases} 1 & \text{if } R_k \cap G \neq \emptyset \\ 0 & \text{otherwise} \end{cases}
+\text{HitRate}@k = \begin{cases} 1 & \text{if } \exists c_i \in C_k \text{ s.t. } \text{doc}(c_i) \in G \\ 0 & \text{otherwise} \end{cases}
 $$
 
 #### Mean Reciprocal Rank (MRR)
+Measures the reciprocal of the 1-indexed rank of the first retrieved chunk belonging to a ground-truth document:
 $$
-\text{MRR} = \begin{cases} \frac{1}{\min \{ i \mid d_i \in G \}} & \text{if } R_k \cap G \neq \emptyset \\ 0 & \text{otherwise} \end{cases}
+\text{MRR} = \begin{cases} \frac{1}{\min \{ i \in \{1, \dots, m\} \mid \text{doc}(c_i) \in G \}} & \text{if } \exists c_i \in C_k \text{ s.t. } \text{doc}(c_i) \in G \\ 0 & \text{otherwise} \end{cases}
 $$
 
 ---
 
 ### 2.2 Lexical Generation Metrics
-Let $C_{\text{cand}}$ be the generated answer tokens and $C_{\text{ref}}$ be the ground-truth reference answer tokens.
+Let $C_{\text{cand}}$ be the generated answer tokens and $C_{\text{ref}}$ be the ground-truth reference answer tokens, extracted using a forensic-aware tokenizer that preserves compound numeric and document identifiers (`\d+(?:[.,/-]\d+)*|\w+`).
 
 #### Token F1
 $$
@@ -80,30 +83,33 @@ $$
 F_1 = \frac{2 \cdot \text{Precision}_{\text{tok}} \cdot \text{Recall}_{\text{tok}}}{\text{Precision}_{\text{tok}} + \text{Recall}_{\text{tok}}}
 $$
 
-#### ROUGE-L (Longest Common Subsequence)
+#### ROUGE-L (Longest Common Subsequence — Symmetric Harmonic F1)
 $$
 R_{\text{LCS}} = \frac{\text{LCS}(C_{\text{cand}}, C_{\text{ref}})}{|C_{\text{ref}}|}, \quad P_{\text{LCS}} = \frac{\text{LCS}(C_{\text{cand}}, C_{\text{ref}})}{|C_{\text{cand}}|}$$
 $$
-\text{ROUGE-L} = \frac{(1 + \beta^2) R_{\text{LCS}} P_{\text{LCS}}}{R_{\text{LCS}} + \beta^2 P_{\text{LCS}}} \quad (\beta = 1.2)
+\text{ROUGE-L} = \frac{2 \cdot R_{\text{LCS}} \cdot P_{\text{LCS}}}{R_{\text{LCS}} + P_{\text{LCS}}} \quad (\beta = 1.0)
 $$
 
 #### BLEU-4
+Let $N = \min(4, |C_{\text{cand}}|, |C_{\text{ref}}|)$ and uniform weights $w_n = 1/N$:
 $$
-\text{BLEU-4} = \text{BP} \cdot \exp\left( \sum_{n=1}^4 w_n \ln p_n \right)
+\text{BLEU-4} = \text{BP} \cdot \exp\left( \sum_{n=1}^N w_n \ln p_n \right)
 $$
-where $\text{BP} = \min\left(1, e^{1 - \frac{|C_{\text{ref}}|}{|C_{\text{cand}}|}}\right)$ and $p_n$ uses add-1 smoothing.
+where $\text{BP} = \min\left(1, e^{1 - \frac{|C_{\text{ref}}|}{|C_{\text{cand}}|}}\right)$, $p_1$ is exact unigram precision, and higher-order $p_n$ ($n > 1$) uses exact $n$-gram precision when overlap $> 0$ and add-1 denominator smoothing $\frac{1}{|G_n(C_{\text{cand}})| + 1}$ when overlap $= 0$.
 
 ---
 
 ### 2.3 LLM-as-a-Judge Forensic Metrics
-A dedicated Judge model evaluates the generated response on a continuous scale $[0.0, 1.0]$ across three dimensions:
+A dedicated Judge model evaluates the pipeline output on a continuous scale $[0.0, 1.0]$ across four dimensions:
 
 1. **Faithfulness (Groundedness)**:
-   Measures whether every factual claim in the generated answer is substantiated by the retrieved document evidence. Penalizes forensic hallucinations.
+   Measures whether every factual claim in the *Generated Answer* is substantiated by the *Retrieved Context*. Penalizes forensic hallucinations.
 2. **Answer Relevance**:
-   Measures whether the generated answer directly addresses the specific investigative question asked, without evasion or extraneous fluff.
+   Measures whether the *Generated Answer* directly addresses the specific *Investigative Question* asked, without evasion or extraneous fluff.
 3. **Context Recall**:
-   Measures whether key factual points present in the official reference answer are captured in the generated output.
+   Measures whether the key factual points present in the *Reference Answer* are present in the *Retrieved Context* (evaluating retrieval sufficiency).
+4. **Answer Correctness**:
+   Measures whether the *Generated Answer* accurately and completely captures the key factual points of the *Reference Answer* (evaluating end-to-end generation accuracy).
 
 ---
 

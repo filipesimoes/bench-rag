@@ -52,8 +52,13 @@ def compute_citation_metrics(
 
     # Case 2: Model cited nothing
     if not unique_cited:
+        # If retrieved context was provided and contained zero ground-truth documents,
+        # the generator properly abstained from fabricating citations.
+        abstained_without_gt_context = (
+            clean_retrieved is not None and not (clean_retrieved & clean_gt)
+        )
         return CitationMetrics(
-            precision=0.0,
+            precision=1.0 if abstained_without_gt_context else 0.0,
             recall=0.0,
             hallucination_rate=0.0,
             cited_count=0,

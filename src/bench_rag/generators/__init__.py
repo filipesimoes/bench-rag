@@ -19,6 +19,7 @@ def get_generator(
     temperature: float | None = None,
     timeout: float | None = None,
     max_retries: int | None = None,
+    response_format: dict[str, Any] | str | None = None,
 ) -> GeneratorLLM:
     """Factory function to instantiate a GeneratorLLM."""
     match generator_type.lower():
@@ -28,6 +29,8 @@ def get_generator(
             kwargs: dict[str, Any] = {}
             if enable_thinking is not None:
                 kwargs["enable_thinking"] = enable_thinking
+            if response_format is not None:
+                kwargs["response_format"] = response_format
             kwargs["dialect"] = dialect or settings.generator_dialect
             return OpenAIGeneratorLLM(
                 model=model_name,

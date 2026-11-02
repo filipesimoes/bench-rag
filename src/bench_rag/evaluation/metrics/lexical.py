@@ -6,16 +6,23 @@ from collections import Counter
 
 from bench_rag.core.evaluator import LexicalMetrics
 
+_TOKEN_PATTERN = re.compile(r"\d+(?:[.,/-]\d+)*|\w+")
+
+
+def tokenize_text(text: str) -> list[str]:
+    """Tokenize alphanumeric words and compound numeric identifiers, normalized to lowercase."""
+    return _TOKEN_PATTERN.findall(text.lower())
+
 
 def _tokenize(text: str) -> list[str]:
-    """Tokenize alphanumeric words, normalized to lowercase."""
-    return re.findall(r"\w+", text.lower())
+    """Backward-compatible alias for tokenize_text."""
+    return tokenize_text(text)
 
 
 def calculate_token_f1(candidate: str, reference: str) -> float:
     """Compute token-level harmonic F1 score."""
-    cand_tokens = _tokenize(candidate)
-    ref_tokens = _tokenize(reference)
+    cand_tokens = tokenize_text(candidate)
+    ref_tokens = tokenize_text(reference)
 
     if not cand_tokens or not ref_tokens:
         return 1.0 if cand_tokens == ref_tokens else 0.0
@@ -34,9 +41,9 @@ def calculate_token_f1(candidate: str, reference: str) -> float:
 
 
 def calculate_rouge_l(candidate: str, reference: str) -> float:
-    """Compute ROUGE-L using Longest Common Subsequence (LCS)."""
-    cand_tokens = _tokenize(candidate)
-    ref_tokens = _tokenize(reference)
+    """Compute symmetric ROUGE-L F1 score (beta = 1.0) using Longest Common Subsequence (LCS)."""
+    cand_tokens = tokenize_text(candidate)
+    ref_tokens = tokenize_text(reference)
 
     m, n = len(cand_tokens), len(ref_tokens)
     if m == 0 or n == 0:
@@ -60,15 +67,14 @@ def calculate_rouge_l(candidate: str, reference: str) -> float:
 
     precision = lcs_len / m
     recall = lcs_len / n
-    beta = 1.2
-    f_lcs = ((1 + beta**2) * precision * recall) / (recall + (beta**2) * precision)
+    f_lcs = (2 * precision * recall) / (precision + recall)
     return round(f_lcs, 4)
 
 
 def calculate_bleu_4(candidate: str, reference: str) -> float:
-    """Compute sentence-level BLEU-4 with add-1 smoothing."""
-    cand_tokens = _tokenize(candidate)
-    ref_tokens = _tokenize(reference)
+    """Compute sentence-level BLEU-4 with Chen & Cherry smoothing and short-sequence support."""
+    cand_tokens = tokenize_text(candidate)
+    ref_tokens = tokenize_text(reference)
 
     if not cand_tokens or not ref_tokens:
         return 1.0 if cand_tokens == ref_tokens else 0.0
@@ -77,33 +83,35 @@ def calculate_bleu_4(candidate: str, reference: str) -> float:
     r_len = len(ref_tokens)
 
     # Brevity penalty
-    if c_len > r_len:
+    if c_len >= r_len:
         bp = 1.0
     else:
         bp = math.exp(1 - (r_len / c_len))
 
-    # N-gram precisions (1-gram to 4-gram)
-    precisions = []
-    for n in range(1, 5):
+    max_n = min(4, c_len, r_len)
+    precisions: list[float] = []
+
+    for n in range(1, max_n + 1):
         cand_ngrams = [tuple(cand_tokens[i : i + n]) for i in range(c_len - n + 1)]
         ref_ngrams = [tuple(ref_tokens[i : i + n]) for i in range(r_len - n + 1)]
-
-        if not cand_ngrams:
-            precisions.append(1.0 / (c_len + 1))  # Smoothing
-            continue
 
         cand_counter = Counter(cand_ngrams)
         ref_counter = Counter(ref_ngrams)
         overlap = sum((cand_counter & ref_counter).values())
 
-        if n == 1 and overlap == 0:
-            return 0.0
+        if n == 1:
+            if overlap == 0:
+                return 0.0
+            precisions.append(overlap / len(cand_ngrams))
+        else:
+            if overlap == 0:
+                # Smoothing for zero-overlap higher-order n-grams (n > 1)
+                smoothed_precision = 1.0 / (len(cand_ngrams) + 1.0)
+                precisions.append(smoothed_precision)
+            else:
+                precisions.append(overlap / len(cand_ngrams))
 
-        # Add-1 smoothing
-        smoothed_precision = (overlap + 1.0) / (len(cand_ngrams) + 1.0)
-        precisions.append(smoothed_precision)
-
-    log_sum = sum(math.log(p) for p in precisions) / 4.0
+    log_sum = sum(math.log(p) for p in precisions) / max_n
     bleu = bp * math.exp(log_sum)
     return round(min(1.0, bleu), 4)
 

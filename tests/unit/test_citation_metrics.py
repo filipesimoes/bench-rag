@@ -60,3 +60,17 @@ def test_citation_metrics_case_insensitivity():
     assert res.precision == 1.0
     assert res.recall == 1.0
     assert res.hallucination_rate == 0.0
+
+
+def test_citation_metrics_empty_cited_correct_abstention():
+    """When retrieved context contains no ground truth documents and model cites nothing, precision is 1.0."""
+    cited = []
+    gt = ["IP_001_2023_FRAUD"]
+    retrieved = ["IP_002_2023_LAUNDERING"]
+
+    res = compute_citation_metrics(cited, gt, retrieved)
+    assert res.precision == 1.0
+    assert res.recall == 0.0
+    assert res.hallucination_rate == 0.0
+    assert res.cited_count == 0
+

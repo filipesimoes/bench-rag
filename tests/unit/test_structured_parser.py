@@ -63,3 +63,15 @@ def test_parse_empty_input():
     parsed = StructuredResponseParser.parse("")
     assert parsed.answer == ""
     assert parsed.cited_inquiries == []
+
+
+def test_parse_json_with_outer_braces_in_preamble():
+    raw = (
+        'Note {synthetic preamble}:\n'
+        '{"answer": "TEST AGENT was the designated officer.", "citations": ["IP_001_2023_FRAUD"]}\n'
+        'Trailing {tag}'
+    )
+    parsed = StructuredResponseParser.parse(raw)
+    assert parsed.answer == "TEST AGENT was the designated officer."
+    assert parsed.cited_inquiries == ["IP_001_2023_FRAUD"]
+

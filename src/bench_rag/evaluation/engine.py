@@ -12,15 +12,15 @@ from bench_rag.core.evaluator import (
     GroundTruthItem,
     SampleEvaluation,
 )
-from bench_rag.core.pipeline import RAGPipeline, RAGResponse
-
-logger = logging.getLogger(__name__)
+from bench_rag.core.pipeline import RAGPipeline
 from bench_rag.evaluation.metadata import extract_execution_metadata
 from bench_rag.evaluation.metrics.citation import compute_citation_metrics
 from bench_rag.evaluation.metrics.lexical import compute_lexical_metrics
 from bench_rag.evaluation.metrics.llm_judge import LLMJudge, get_judge
 from bench_rag.evaluation.metrics.retrieval import compute_retrieval_metrics
 from bench_rag.evaluation.taxonomy import build_evaluation_summary
+
+logger = logging.getLogger(__name__)
 
 
 def load_ground_truth_csv(csv_path: Path | str) -> list[GroundTruthItem]:
@@ -120,31 +120,17 @@ class StandardEvaluationEngine(EvaluationEngine):
             if progress_callback:
                 progress_callback(idx, total, item, "rag_query")
 
-            # 1. Execute RAG pipeline with error resilience
-            try:
-                response = pipeline.query(item.question, top_k=effective_k)
-            except Exception as e:  # noqa: BLE001
-                logger.error(
-                    "RAG query execution failed for question %s: %s (%s). Falling back to empty response.",
-                    item.id,
-                    e,
-                    type(e).__name__,
-                )
-                response = RAGResponse(
-                    question=item.question,
-                    answer=f"[RAG pipeline error: {e}]",
-                    retrieved_chunks=[],
-                    referenced_inquiries=[],
-                    cited_inquiries=[],
-                    raw_answer="",
-                    latency_ms=0.0,
-                    pipeline_name=getattr(pipeline, "name", "unknown_pipeline"),
-                    metadata={"error": str(e)},
-                )
+            # 1. Execute RAG pipeline (fail-fast on unhandled pipeline errors)
+            response = pipeline.query(item.question, top_k=effective_k)
 
-            # 2. Retrieval metrics against ground truth references
+            # 2. Retrieval metrics against ground truth references (chunk-level rank & precision)
+            chunk_doc_ids = [
+                res.chunk.document_id
+                for res in response.retrieved_chunks
+                if res.chunk.document_id
+            ] or response.referenced_inquiries
             retrieval_res = compute_retrieval_metrics(
-                retrieved_inquiries=response.referenced_inquiries,
+                retrieved_inquiries=chunk_doc_ids,
                 ground_truth_references=item.inquiry_references,
                 k=effective_k,
             )
@@ -166,7 +152,15 @@ class StandardEvaluationEngine(EvaluationEngine):
             if progress_callback:
                 progress_callback(idx, total, item, "llm_judge")
 
-            context_text = "\n\n".join(res.chunk.text for res in response.retrieved_chunks)
+            context_blocks = []
+            for res in response.retrieved_chunks:
+                doc_id = res.chunk.document_id
+                if doc_id:
+                    page = res.chunk.metadata.get("page_number", "N/A")
+                    context_blocks.append(f"[Document: {doc_id}] (Page {page}):\n{res.chunk.text}")
+                else:
+                    context_blocks.append(res.chunk.text)
+            context_text = "\n\n".join(context_blocks)
             judge_res = self.judge.evaluate(
                 question=item.question,
                 answer=response.answer,

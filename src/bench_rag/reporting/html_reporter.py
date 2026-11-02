@@ -534,6 +534,7 @@ def _format_aggregate_table(title: str, aggregates: dict[str, TaxonomyAggregate]
     rows: list[str] = []
     for cat, agg in aggregates.items():
         cat_esc = html.escape(str(cat))
+        ans_corr = getattr(agg, "mean_answer_correctness", 0.0)
         rows.append(
             f"<tr>"
             f"<td><strong>{cat_esc}</strong></td>"
@@ -549,6 +550,7 @@ def _format_aggregate_table(title: str, aggregates: dict[str, TaxonomyAggregate]
             f"<td class='num'>{agg.mean_faithfulness:.4f}</td>"
             f"<td class='num'>{agg.mean_answer_relevance:.4f}</td>"
             f"<td class='num'>{agg.mean_context_recall:.4f}</td>"
+            f"<td class='num'>{ans_corr:.4f}</td>"
             f"<td class='num'>{agg.mean_latency_ms:.1f}</td>"
             f"</tr>"
         )
@@ -572,6 +574,7 @@ def _format_aggregate_table(title: str, aggregates: dict[str, TaxonomyAggregate]
         <th class="num">Faithfulness</th>
         <th class="num">Relevance</th>
         <th class="num">Context Recall</th>
+        <th class="num">Answer Correctness</th>
         <th class="num">Latency (ms)</th>
       </tr>
     </thead>
@@ -597,7 +600,7 @@ def _render_metric_guide_html() -> str:
         <tbody>
           <tr>
             <td class="metric-name">Precision@K</td>
-            <td class="metric-desc">Proportion of retrieved documents in the top-<em>k</em> that are relevant against ground truth, assessing context noise and false positives fed to the generator.</td>
+            <td class="metric-desc">Proportion of retrieved chunks in the top-<em>k</em> that belong to relevant ground-truth inquiries, assessing context signal-to-noise ratio fed to the generator.</td>
           </tr>
           <tr>
             <td class="metric-name">Recall@K</td>
@@ -609,7 +612,7 @@ def _render_metric_guide_html() -> str:
           </tr>
           <tr>
             <td class="metric-name">Mean Reciprocal Rank (MRR)</td>
-            <td class="metric-desc">Reciprocal rank of the first relevant document (1 / rank), rewarding pipelines that position key evidence at the very top of the ranking.</td>
+            <td class="metric-desc">Reciprocal rank of the first relevant chunk (1 / rank), rewarding pipelines that position key evidence at the very top of the ranking.</td>
           </tr>
         </tbody>
       </table>
@@ -645,7 +648,7 @@ def _render_metric_guide_html() -> str:
           </tr>
           <tr>
             <td class="metric-name">ROUGE-L</td>
-            <td class="metric-desc">F1 score based on the Longest Common Subsequence (LCS, with &beta; = 1.2), capturing sentence-level structural coherence and word ordering against the reference answer.</td>
+            <td class="metric-desc">Symmetric harmonic F1 score (&beta; = 1.0) based on the Longest Common Subsequence (LCS), capturing sentence-level structural coherence and word ordering against the reference answer.</td>
           </tr>
           <tr>
             <td class="metric-name">BLEU-4</td>
@@ -669,7 +672,11 @@ def _render_metric_guide_html() -> str:
           </tr>
           <tr>
             <td class="metric-name">Context Recall</td>
-            <td class="metric-desc">Verifies whether all essential investigative facts present in the official reference answer are captured in the generated output.</td>
+            <td class="metric-desc">Verifies whether the retrieved context chunks contain all essential investigative facts present in the official reference answer (RAGAS Context Recall).</td>
+          </tr>
+          <tr>
+            <td class="metric-name">Answer Correctness</td>
+            <td class="metric-desc">Verifies whether the generated answer captures all essential investigative facts present in the official reference answer.</td>
           </tr>
         </tbody>
       </table>
@@ -828,6 +835,7 @@ def generate_html_report(
     """Generate a comprehensive, self-contained HTML evaluation report."""
     ov = summary.overall
     p_name = html.escape(summary.pipeline_name)
+    ov_ans_corr = getattr(ov, "mean_answer_correctness", 0.0)
 
     body_parts = [
         "<header>",
@@ -842,7 +850,8 @@ def generate_html_report(
         f"  <div class='card'><div class='card-title'>Mean MRR</div><div class='card-value'>{ov.mean_mrr:.4f}</div><div class='card-subtitle'>Reciprocal Rank</div></div>",
         f"  <div class='card'><div class='card-title'>Faithfulness</div><div class='card-value'>{ov.mean_faithfulness:.4f}</div><div class='card-subtitle'>LLM Judge Groundedness</div></div>",
         f"  <div class='card'><div class='card-title'>Answer Relevance</div><div class='card-value'>{ov.mean_answer_relevance:.4f}</div><div class='card-subtitle'>Query Intent Alignment</div></div>",
-        f"  <div class='card'><div class='card-title'>Context Recall</div><div class='card-value'>{ov.mean_context_recall:.4f}</div><div class='card-subtitle'>Reference Answer Coverage</div></div>",
+        f"  <div class='card'><div class='card-title'>Context Recall</div><div class='card-value'>{ov.mean_context_recall:.4f}</div><div class='card-subtitle'>Context Coverage</div></div>",
+        f"  <div class='card'><div class='card-title'>Answer Correctness</div><div class='card-value'>{ov_ans_corr:.4f}</div><div class='card-subtitle'>Reference Answer Coverage</div></div>",
         f"  <div class='card'><div class='card-title'>Citation Precision</div><div class='card-value'>{ov.mean_citation_precision:.4f}</div><div class='card-subtitle'>Source Accuracy</div></div>",
         f"  <div class='card'><div class='card-title'>Mean Latency</div><div class='card-value'>{ov.mean_latency_ms:.1f} <span style='font-size:0.9rem; font-weight:normal;'>ms</span></div><div class='card-subtitle'>End-to-End Pipeline</div></div>",
         "</div>",
@@ -866,6 +875,7 @@ def generate_html_report(
         f"      <tr><td>LLM-as-a-Judge</td><td>Faithfulness (Groundedness)</td><td class='num'>{ov.mean_faithfulness:.4f}</td></tr>",
         f"      <tr><td>LLM-as-a-Judge</td><td>Answer Relevance</td><td class='num'>{ov.mean_answer_relevance:.4f}</td></tr>",
         f"      <tr><td>LLM-as-a-Judge</td><td>Context Recall</td><td class='num'>{ov.mean_context_recall:.4f}</td></tr>",
+        f"      <tr><td>LLM-as-a-Judge</td><td>Answer Correctness</td><td class='num'>{ov_ans_corr:.4f}</td></tr>",
         f"      <tr><td>Performance</td><td>Mean Latency</td><td class='num'>{ov.mean_latency_ms:.1f} ms</td></tr>",
         "    </tbody>",
         "  </table>",
@@ -888,12 +898,13 @@ def generate_html_report(
         "<h2>6. Typology x Complexity Matrix</h2>",
         "<div class='table-wrapper'>",
         "  <table>",
-        "    <thead><tr><th>Typology</th><th>Complexity</th><th class='num'>Samples</th><th class='num'>Recall@K</th><th class='num'>MRR</th><th class='num'>Token F1</th><th class='num'>Faithfulness</th><th class='num'>Relevance</th><th class='num'>Context Recall</th></tr></thead>",
+        "    <thead><tr><th>Typology</th><th>Complexity</th><th class='num'>Samples</th><th class='num'>Recall@K</th><th class='num'>MRR</th><th class='num'>Token F1</th><th class='num'>Faithfulness</th><th class='num'>Relevance</th><th class='num'>Context Recall</th><th class='num'>Answer Correctness</th></tr></thead>",
         "    <tbody>",
     ]
 
     for typ, comp_dict in sorted(summary.matrix.items()):
         for comp, agg in sorted(comp_dict.items()):
+            ans_corr_m = getattr(agg, "mean_answer_correctness", 0.0)
             body_parts.append(
                 f"<tr>"
                 f"<td><strong>{html.escape(typ)}</strong></td>"
@@ -905,6 +916,7 @@ def generate_html_report(
                 f"<td class='num'>{agg.mean_faithfulness:.4f}</td>"
                 f"<td class='num'>{agg.mean_answer_relevance:.4f}</td>"
                 f"<td class='num'>{agg.mean_context_recall:.4f}</td>"
+                f"<td class='num'>{ans_corr_m:.4f}</td>"
                 f"</tr>"
             )
 
@@ -923,6 +935,7 @@ def generate_html_report(
         cit_str = html.escape("; ".join(s.response.cited_inquiries)) if s.response.cited_inquiries else "<em>None</em>"
         ref_str = html.escape("; ".join(s.item.inquiry_references)) if s.item.inquiry_references else "<em>None</em>"
         ret_str = html.escape("; ".join(s.response.referenced_inquiries)) if s.response.referenced_inquiries else "<em>None</em>"
+        s_ans_corr = getattr(s.llm_judge, "answer_correctness", 0.0)
 
         q_link_html = ""
         if question_rel_dir:
@@ -950,7 +963,7 @@ def generate_html_report(
                 "  </div>",
                 "  <div style='background: var(--code-bg); padding: 0.6rem 0.85rem; border-radius: 6px; font-size: 0.85rem; margin-bottom: 1rem; border: 1px solid var(--border);'>",
                 f"    Precision@K: <strong>{s.retrieval.precision_at_k:.4f}</strong> | Recall@K: <strong>{s.retrieval.recall_at_k:.4f}</strong> | MRR: <strong>{s.retrieval.mrr:.4f}</strong> | {cit_metrics_html}<br>",
-                f"    ROUGE-L: <strong>{s.lexical.rouge_l:.4f}</strong> | Token F1: <strong>{s.lexical.token_f1:.4f}</strong> | Faithfulness: <strong>{s.llm_judge.faithfulness:.4f}</strong> | Relevance: <strong>{s.llm_judge.answer_relevance:.4f}</strong> | Context Recall: <strong>{s.llm_judge.context_recall:.4f}</strong>",
+                f"    ROUGE-L: <strong>{s.lexical.rouge_l:.4f}</strong> | Token F1: <strong>{s.lexical.token_f1:.4f}</strong> | BLEU-4: <strong>{s.lexical.bleu_4:.4f}</strong> | Faithfulness: <strong>{s.llm_judge.faithfulness:.4f}</strong> | Relevance: <strong>{s.llm_judge.answer_relevance:.4f}</strong> | Context Recall: <strong>{s.llm_judge.context_recall:.4f}</strong> | Answer Correctness: <strong>{s_ans_corr:.4f}</strong>",
                 "  </div>",
                 "  <strong>Generated Answer:</strong>",
                 f"  <div class='answer-box'>{html.escape(s.response.answer)}</div>",
@@ -982,6 +995,7 @@ def generate_question_report(
     lex = sample.lexical
     judge = sample.llm_judge
     cit = getattr(sample, "citation", None)
+    ans_corr = getattr(judge, "answer_correctness", 0.0)
 
     typ_desc = TYPOLOGY_DESCRIPTIONS.get(item.typology, item.typology)
     comp_desc = COMPLEXITY_DESCRIPTIONS.get(item.complexity, item.complexity)
@@ -1021,10 +1035,10 @@ def generate_question_report(
         "  <table>",
         "    <thead><tr><th>Metric Category</th><th>Metric</th><th class='num'>Score</th><th>Description</th></tr></thead>",
         "    <tbody>",
-        f"      <tr><td>Retrieval</td><td>Precision@K</td><td class='num'>{ret.precision_at_k:.4f}</td><td>Proportion of retrieved inquiries that are relevant</td></tr>",
+        f"      <tr><td>Retrieval</td><td>Precision@K</td><td class='num'>{ret.precision_at_k:.4f}</td><td>Proportion of retrieved chunks in top-K belonging to relevant inquiries</td></tr>",
         f"      <tr><td>Retrieval</td><td>Recall@K</td><td class='num'>{ret.recall_at_k:.4f}</td><td>Coverage of target ground truth inquiry references</td></tr>",
         f"      <tr><td>Retrieval</td><td>Hit Rate@K</td><td class='num'>{ret.hit_rate:.4f}</td><td>At least one relevant inquiry document identified</td></tr>",
-        f"      <tr><td>Retrieval</td><td>Mean Reciprocal Rank (MRR)</td><td class='num'>{ret.mrr:.4f}</td><td>Reciprocal rank of the first relevant inquiry document</td></tr>",
+        f"      <tr><td>Retrieval</td><td>Mean Reciprocal Rank (MRR)</td><td class='num'>{ret.mrr:.4f}</td><td>Reciprocal rank of the first relevant chunk</td></tr>",
         (
             f"<tr><td>Citation Attribution</td><td>Citation Precision</td><td class='num'>{cit.precision:.4f}</td><td>Proportion of generator-cited inquiries present in ground truth</td></tr>"
             if cit
@@ -1045,7 +1059,8 @@ def generate_question_report(
         f"      <tr><td>Lexical Overlap</td><td>BLEU-4</td><td class='num'>{lex.bleu_4:.4f}</td><td>4-gram precision against ground truth reference</td></tr>",
         f"      <tr><td>LLM-as-a-Judge</td><td>Faithfulness (Groundedness)</td><td class='num'>{judge.faithfulness:.4f}</td><td>Factual claims grounded strictly in retrieved context</td></tr>",
         f"      <tr><td>LLM-as-a-Judge</td><td>Answer Relevance</td><td class='num'>{judge.answer_relevance:.4f}</td><td>Direct alignment with the investigative query intent</td></tr>",
-        f"      <tr><td>LLM-as-a-Judge</td><td>Context Recall</td><td class='num'>{judge.context_recall:.4f}</td><td>Presence of key investigative facts from reference answer</td></tr>",
+        f"      <tr><td>LLM-as-a-Judge</td><td>Context Recall</td><td class='num'>{judge.context_recall:.4f}</td><td>Presence of key investigative facts from reference answer in retrieved context</td></tr>",
+        f"      <tr><td>LLM-as-a-Judge</td><td>Answer Correctness</td><td class='num'>{ans_corr:.4f}</td><td>Presence of key investigative facts from reference answer in generated answer</td></tr>",
         "    </tbody>",
         "  </table>",
         "</div>",
@@ -1272,11 +1287,18 @@ def generate_comparison_report(
     ov_b = summary_b.overall
     name_a = html.escape(summary_a.pipeline_name)
     name_b = html.escape(summary_b.pipeline_name)
+    ac_a = getattr(ov_a, "mean_answer_correctness", 0.0)
+    ac_b = getattr(ov_b, "mean_answer_correctness", 0.0)
 
-    def diff_badge(val_b: float, val_a: float) -> str:
+    def diff_badge(val_b: float, val_a: float, lower_is_better: bool = False) -> str:
         d = val_b - val_a
         sign = "+" if d >= 0 else ""
-        badge_cls = "badge-success" if d > 0 else ("badge-danger" if d < 0 else "badge-neutral")
+        if abs(d) < 1e-9:
+            badge_cls = "badge-neutral"
+        elif lower_is_better:
+            badge_cls = "badge-success" if d < 0 else "badge-danger"
+        else:
+            badge_cls = "badge-success" if d > 0 else "badge-danger"
         return f"<span class='badge {badge_cls}'>{sign}{d:.4f}</span>"
 
     links_html = ""
@@ -1308,22 +1330,27 @@ def generate_comparison_report(
         f"      <tr><td><strong>Retrieval Recall@K</strong></td><td class='num'>{ov_a.mean_recall_at_k:.4f}</td><td class='num'>{ov_b.mean_recall_at_k:.4f}</td><td class='num'>{diff_badge(ov_b.mean_recall_at_k, ov_a.mean_recall_at_k)}</td></tr>",
         f"      <tr><td><strong>Retrieval Hit Rate</strong></td><td class='num'>{ov_a.mean_hit_rate:.4f}</td><td class='num'>{ov_b.mean_hit_rate:.4f}</td><td class='num'>{diff_badge(ov_b.mean_hit_rate, ov_a.mean_hit_rate)}</td></tr>",
         f"      <tr><td><strong>Retrieval MRR</strong></td><td class='num'>{ov_a.mean_mrr:.4f}</td><td class='num'>{ov_b.mean_mrr:.4f}</td><td class='num'>{diff_badge(ov_b.mean_mrr, ov_a.mean_mrr)}</td></tr>",
+        f"      <tr><td><strong>Citation Precision</strong></td><td class='num'>{ov_a.mean_citation_precision:.4f}</td><td class='num'>{ov_b.mean_citation_precision:.4f}</td><td class='num'>{diff_badge(ov_b.mean_citation_precision, ov_a.mean_citation_precision)}</td></tr>",
+        f"      <tr><td><strong>Citation Recall</strong></td><td class='num'>{ov_a.mean_citation_recall:.4f}</td><td class='num'>{ov_b.mean_citation_recall:.4f}</td><td class='num'>{diff_badge(ov_b.mean_citation_recall, ov_a.mean_citation_recall)}</td></tr>",
+        f"      <tr><td><strong>Citation Hallucination Rate</strong></td><td class='num'>{ov_a.mean_citation_hallucination_rate:.4f}</td><td class='num'>{ov_b.mean_citation_hallucination_rate:.4f}</td><td class='num'>{diff_badge(ov_b.mean_citation_hallucination_rate, ov_a.mean_citation_hallucination_rate, lower_is_better=True)}</td></tr>",
         f"      <tr><td><strong>ROUGE-L</strong></td><td class='num'>{ov_a.mean_rouge_l:.4f}</td><td class='num'>{ov_b.mean_rouge_l:.4f}</td><td class='num'>{diff_badge(ov_b.mean_rouge_l, ov_a.mean_rouge_l)}</td></tr>",
         f"      <tr><td><strong>Token F1</strong></td><td class='num'>{ov_a.mean_token_f1:.4f}</td><td class='num'>{ov_b.mean_token_f1:.4f}</td><td class='num'>{diff_badge(ov_b.mean_token_f1, ov_a.mean_token_f1)}</td></tr>",
+        f"      <tr><td><strong>BLEU-4</strong></td><td class='num'>{ov_a.mean_bleu_4:.4f}</td><td class='num'>{ov_b.mean_bleu_4:.4f}</td><td class='num'>{diff_badge(ov_b.mean_bleu_4, ov_a.mean_bleu_4)}</td></tr>",
         f"      <tr><td><strong>Faithfulness (Judge)</strong></td><td class='num'>{ov_a.mean_faithfulness:.4f}</td><td class='num'>{ov_b.mean_faithfulness:.4f}</td><td class='num'>{diff_badge(ov_b.mean_faithfulness, ov_a.mean_faithfulness)}</td></tr>",
         f"      <tr><td><strong>Relevance (Judge)</strong></td><td class='num'>{ov_a.mean_answer_relevance:.4f}</td><td class='num'>{ov_b.mean_answer_relevance:.4f}</td><td class='num'>{diff_badge(ov_b.mean_answer_relevance, ov_a.mean_answer_relevance)}</td></tr>",
         f"      <tr><td><strong>Context Recall (Judge)</strong></td><td class='num'>{ov_a.mean_context_recall:.4f}</td><td class='num'>{ov_b.mean_context_recall:.4f}</td><td class='num'>{diff_badge(ov_b.mean_context_recall, ov_a.mean_context_recall)}</td></tr>",
-        f"      <tr><td><strong>Mean Latency (ms)</strong></td><td class='num'>{ov_a.mean_latency_ms:.1f}</td><td class='num'>{ov_b.mean_latency_ms:.1f}</td><td class='num'>{diff_badge(ov_b.mean_latency_ms, ov_a.mean_latency_ms)}</td></tr>",
+        f"      <tr><td><strong>Answer Correctness (Judge)</strong></td><td class='num'>{ac_a:.4f}</td><td class='num'>{ac_b:.4f}</td><td class='num'>{diff_badge(ac_b, ac_a)}</td></tr>",
+        f"      <tr><td><strong>Mean Latency (ms)</strong></td><td class='num'>{ov_a.mean_latency_ms:.1f}</td><td class='num'>{ov_b.mean_latency_ms:.1f}</td><td class='num'>{diff_badge(ov_b.mean_latency_ms, ov_a.mean_latency_ms, lower_is_better=True)}</td></tr>",
         "    </tbody>",
         "  </table>",
         "</div>",
         _render_metric_guide_html(),
         "<h2>2. Pipeline Architectures &amp; Models Comparison</h2>",
         _render_comparison_config_html(summary_a, summary_b),
-        "<h2>3. Typology Comparison (Recall@K / Faithfulness / Context Recall)</h2>",
+        "<h2>3. Typology Comparison (Recall@K / Faithfulness / Context Recall / Answer Correctness)</h2>",
         "<div class='table-wrapper'>",
         "  <table>",
-        f"    <thead><tr><th>Typology</th><th class='num'>{name_a} Recall</th><th class='num'>{name_b} Recall</th><th class='num'>{name_a} Faith</th><th class='num'>{name_b} Faith</th><th class='num'>{name_a} CtxRec</th><th class='num'>{name_b} CtxRec</th></tr></thead>",
+        f"    <thead><tr><th>Typology</th><th class='num'>{name_a} Recall</th><th class='num'>{name_b} Recall</th><th class='num'>{name_a} Faith</th><th class='num'>{name_b} Faith</th><th class='num'>{name_a} CtxRec</th><th class='num'>{name_b} CtxRec</th><th class='num'>{name_a} AnsCorr</th><th class='num'>{name_b} AnsCorr</th></tr></thead>",
         "    <tbody>",
     ]
 
@@ -1337,8 +1364,10 @@ def generate_comparison_report(
         f_b = f"{tb.mean_faithfulness:.4f}" if tb else "N/A"
         cr_a = f"{ta.mean_context_recall:.4f}" if ta else "N/A"
         cr_b = f"{tb.mean_context_recall:.4f}" if tb else "N/A"
+        ac_ta = f"{getattr(ta, 'mean_answer_correctness', 0.0):.4f}" if ta else "N/A"
+        ac_tb = f"{getattr(tb, 'mean_answer_correctness', 0.0):.4f}" if tb else "N/A"
         body_parts.append(
-            f"<tr><td><strong>{html.escape(typ)}</strong></td><td class='num'>{rec_a}</td><td class='num'>{rec_b}</td><td class='num'>{f_a}</td><td class='num'>{f_b}</td><td class='num'>{cr_a}</td><td class='num'>{cr_b}</td></tr>"
+            f"<tr><td><strong>{html.escape(typ)}</strong></td><td class='num'>{rec_a}</td><td class='num'>{rec_b}</td><td class='num'>{f_a}</td><td class='num'>{f_b}</td><td class='num'>{cr_a}</td><td class='num'>{cr_b}</td><td class='num'>{ac_ta}</td><td class='num'>{ac_tb}</td></tr>"
         )
 
     body_parts.extend(
@@ -1346,10 +1375,10 @@ def generate_comparison_report(
             "    </tbody>",
             "  </table>",
             "</div>",
-            "<h2>4. Complexity Comparison (Recall@K / Faithfulness / Context Recall)</h2>",
+            "<h2>4. Complexity Comparison (Recall@K / Faithfulness / Context Recall / Answer Correctness)</h2>",
             "<div class='table-wrapper'>",
             "  <table>",
-            f"    <thead><tr><th>Complexity</th><th class='num'>{name_a} Recall</th><th class='num'>{name_b} Recall</th><th class='num'>{name_a} Faith</th><th class='num'>{name_b} Faith</th><th class='num'>{name_a} CtxRec</th><th class='num'>{name_b} CtxRec</th></tr></thead>",
+            f"    <thead><tr><th>Complexity</th><th class='num'>{name_a} Recall</th><th class='num'>{name_b} Recall</th><th class='num'>{name_a} Faith</th><th class='num'>{name_b} Faith</th><th class='num'>{name_a} CtxRec</th><th class='num'>{name_b} CtxRec</th><th class='num'>{name_a} AnsCorr</th><th class='num'>{name_b} AnsCorr</th></tr></thead>",
             "    <tbody>",
         ]
     )
@@ -1366,8 +1395,10 @@ def generate_comparison_report(
         f_b = f"{cb.mean_faithfulness:.4f}" if cb else "N/A"
         cr_a = f"{ca.mean_context_recall:.4f}" if ca else "N/A"
         cr_b = f"{cb.mean_context_recall:.4f}" if cb else "N/A"
+        ac_ca = f"{getattr(ca, 'mean_answer_correctness', 0.0):.4f}" if ca else "N/A"
+        ac_cb = f"{getattr(cb, 'mean_answer_correctness', 0.0):.4f}" if cb else "N/A"
         body_parts.append(
-            f"<tr><td><strong>{html.escape(comp)}</strong></td><td class='num'>{rec_a}</td><td class='num'>{rec_b}</td><td class='num'>{f_a}</td><td class='num'>{f_b}</td><td class='num'>{cr_a}</td><td class='num'>{cr_b}</td></tr>"
+            f"<tr><td><strong>{html.escape(comp)}</strong></td><td class='num'>{rec_a}</td><td class='num'>{rec_b}</td><td class='num'>{f_a}</td><td class='num'>{f_b}</td><td class='num'>{cr_a}</td><td class='num'>{cr_b}</td><td class='num'>{ac_ca}</td><td class='num'>{ac_cb}</td></tr>"
         )
 
     body_parts.extend(["    </tbody>", "  </table>", "</div>"])

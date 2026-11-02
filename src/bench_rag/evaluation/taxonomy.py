@@ -27,6 +27,7 @@ def aggregate_samples(samples: list[SampleEvaluation]) -> TaxonomyAggregate:
             mean_answer_relevance=0.0,
             mean_context_recall=0.0,
             mean_latency_ms=0.0,
+            mean_answer_correctness=0.0,
             mean_citation_precision=0.0,
             mean_citation_recall=0.0,
             mean_citation_hallucination_rate=0.0,
@@ -52,6 +53,9 @@ def aggregate_samples(samples: list[SampleEvaluation]) -> TaxonomyAggregate:
         mean_answer_relevance=round(sum(s.llm_judge.answer_relevance for s in samples) / n, 4),
         mean_context_recall=round(sum(s.llm_judge.context_recall for s in samples) / n, 4),
         mean_latency_ms=round(sum(s.response.latency_ms for s in samples) / n, 2),
+        mean_answer_correctness=round(
+            sum(getattr(s.llm_judge, "answer_correctness", 0.0) for s in samples) / n, 4
+        ),
         mean_citation_precision=mean_cit_prec,
         mean_citation_recall=mean_cit_rec,
         mean_citation_hallucination_rate=mean_cit_hal,

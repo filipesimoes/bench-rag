@@ -188,6 +188,7 @@ class HeaderFooterCleaner(DocumentCleaner):
         # 3. Clean pages
         preserved_first_headers: set[str] = set()
         cleaned_pages: list[str] = []
+        cleaned_page_numbers: list[int] = []
         total_orig_chars = 0
         total_cleaned_chars = 0
 
@@ -229,6 +230,7 @@ class HeaderFooterCleaner(DocumentCleaner):
             total_cleaned_chars += len(page_content)
             if page_content:
                 cleaned_pages.append(page_content)
+                cleaned_page_numbers.append(p_idx + 1)
 
         chars_removed = max(0, total_orig_chars - total_cleaned_chars)
         metadata_extras = {
@@ -237,6 +239,7 @@ class HeaderFooterCleaner(DocumentCleaner):
             "repeated_headers_found": sorted(repeated_headers),
             "repeated_footers_found": sorted(repeated_footers),
             "characters_removed": chars_removed,
+            "cleaned_page_numbers": cleaned_page_numbers,
         }
 
         return cleaned_pages, metadata_extras
@@ -254,6 +257,7 @@ class HeaderFooterCleaner(DocumentCleaner):
                 "repeated_headers_found": [],
                 "repeated_footers_found": [],
                 "characters_removed": 0,
+                "cleaned_page_numbers": [],
             }
 
         # Signatures
@@ -286,10 +290,11 @@ class HeaderFooterCleaner(DocumentCleaner):
 
         preserved_first_lines: set[str] = set()
         cleaned_pages: list[str] = []
+        cleaned_page_numbers: list[int] = []
         total_orig_chars = sum(len(p) for p in pages_text)
         total_cleaned_chars = 0
 
-        for p_text in pages_text:
+        for p_idx, p_text in enumerate(pages_text, start=1):
             lines = p_text.splitlines()
             cleaned_lines: list[str] = []
 
@@ -313,6 +318,7 @@ class HeaderFooterCleaner(DocumentCleaner):
             total_cleaned_chars += len(page_cleaned)
             if page_cleaned:
                 cleaned_pages.append(page_cleaned)
+                cleaned_page_numbers.append(p_idx)
 
         metadata_extras = {
             "cleaned_headers_footers": True,
@@ -320,6 +326,7 @@ class HeaderFooterCleaner(DocumentCleaner):
             "repeated_headers_found": sorted(repeated_lines),
             "repeated_footers_found": [],
             "characters_removed": max(0, total_orig_chars - total_cleaned_chars),
+            "cleaned_page_numbers": cleaned_page_numbers,
         }
         return cleaned_pages, metadata_extras
 

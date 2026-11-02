@@ -1,5 +1,7 @@
 """Deterministic mock reranker for testing and dry-run benchmarks."""
 
+from dataclasses import replace
+
 from bench_rag.core.reranker import Reranker
 from bench_rag.core.vector_store import SearchResult
 
@@ -32,11 +34,10 @@ class MockReranker(Reranker):
 
         reranked: list[SearchResult] = []
         for res, new_score, orig_rank in scored_items[:top_k]:
-            updated_chunk = res.chunk
-            updated_metadata = dict(updated_chunk.metadata)
+            updated_metadata = dict(res.chunk.metadata)
             updated_metadata["initial_retrieval_score"] = res.score
             updated_metadata["initial_retrieval_rank"] = orig_rank
-            updated_chunk.metadata = updated_metadata
+            updated_chunk = replace(res.chunk, metadata=updated_metadata)
 
             reranked.append(SearchResult(chunk=updated_chunk, score=new_score))
 

@@ -2,6 +2,7 @@
 
 import logging
 import time
+from dataclasses import replace
 from typing import Any
 
 import httpx
@@ -116,11 +117,10 @@ class HttpReranker(Reranker):
             score = float(item.get("relevance_score", item.get("score", 0.0)))
             original_res = results[idx]
 
-            updated_chunk = original_res.chunk
-            updated_metadata = dict(updated_chunk.metadata)
+            updated_metadata = dict(original_res.chunk.metadata)
             updated_metadata["initial_retrieval_score"] = original_res.score
             updated_metadata["initial_retrieval_rank"] = idx + 1
-            updated_chunk.metadata = updated_metadata
+            updated_chunk = replace(original_res.chunk, metadata=updated_metadata)
 
             reranked.append(SearchResult(chunk=updated_chunk, score=score))
 
