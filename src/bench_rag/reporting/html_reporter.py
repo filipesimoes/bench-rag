@@ -482,6 +482,161 @@ details.metric-guide .details-content {
   color: var(--text-muted);
 }
 
+/* 2D Typology x Complexity Matrix & Heatmap */
+.matrix-tabs-container {
+  margin-bottom: 2rem;
+}
+
+.matrix-tab-input {
+  display: none;
+}
+
+.matrix-tab-label {
+  display: inline-block;
+  padding: 0.45rem 0.85rem;
+  margin: 0 0.35rem 0.5rem 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease-in-out;
+}
+
+.matrix-tab-label:hover {
+  border-color: var(--primary-border);
+  color: var(--primary);
+  background: var(--primary-light);
+}
+
+.matrix-tab-input:checked + .matrix-tab-label {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary);
+  box-shadow: var(--shadow-sm);
+}
+
+.matrix-panel {
+  display: none;
+}
+
+#tab-consolidated:checked ~ .matrix-panels #panel-consolidated,
+#tab-composite:checked ~ .matrix-panels #panel-composite,
+#tab-precision:checked ~ .matrix-panels #panel-precision,
+#tab-recall:checked ~ .matrix-panels #panel-recall,
+#tab-hit-rate:checked ~ .matrix-panels #panel-hit-rate,
+#tab-mrr:checked ~ .matrix-panels #panel-mrr,
+#tab-cit-precision:checked ~ .matrix-panels #panel-cit-precision,
+#tab-cit-recall:checked ~ .matrix-panels #panel-cit-recall,
+#tab-cit-hallucination:checked ~ .matrix-panels #panel-cit-hallucination,
+#tab-rouge-l:checked ~ .matrix-panels #panel-rouge-l,
+#tab-token-f1:checked ~ .matrix-panels #panel-token-f1,
+#tab-bleu-4:checked ~ .matrix-panels #panel-bleu-4,
+#tab-faithfulness:checked ~ .matrix-panels #panel-faithfulness,
+#tab-relevance:checked ~ .matrix-panels #panel-relevance,
+#tab-context-recall:checked ~ .matrix-panels #panel-context-recall,
+#tab-answer-correctness:checked ~ .matrix-panels #panel-answer-correctness,
+#tab-latency:checked ~ .matrix-panels #panel-latency {
+  display: block;
+}
+
+.matrix-2d-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.matrix-2d-table th,
+.matrix-2d-table td {
+  border: 1px solid var(--border);
+  vertical-align: top;
+  padding: 0.75rem;
+}
+
+.matrix-2d-table thead th {
+  background: var(--table-head);
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.matrix-2d-table thead th.matrix-corner {
+  text-align: left;
+  width: 180px;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+
+.matrix-2d-table tbody th.matrix-row-header {
+  background: var(--table-head);
+  text-align: left;
+  font-weight: 700;
+  width: 180px;
+  white-space: normal;
+  overflow-wrap: break-word;
+  vertical-align: middle;
+}
+
+.matrix-2d-table tbody tr:nth-child(even) {
+  background: transparent;
+}
+
+.heatmap-cell {
+  transition: transform 0.1s ease;
+}
+
+.heatmap-cell-empty {
+  background: var(--code-bg);
+  color: var(--text-muted);
+  text-align: center;
+  vertical-align: middle !important;
+  font-style: italic;
+}
+
+.matrix-metric-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.28rem;
+}
+
+.matrix-metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.65);
+}
+
+.matrix-metric-label {
+  font-weight: 500;
+  color: var(--text-main);
+}
+
+.matrix-metric-pill {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 0.08rem 0.4rem;
+  border-radius: 4px;
+}
+
+.heatmap-single-cell {
+  text-align: center;
+  vertical-align: middle !important;
+  padding: 1.1rem 0.75rem !important;
+}
+
+.heatmap-single-score {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
 /* Print Styles */
 @media print {
   body {
@@ -600,19 +755,19 @@ def _render_metric_guide_html() -> str:
         <tbody>
           <tr>
             <td class="metric-name">Precision@K</td>
-            <td class="metric-desc">Proportion of retrieved chunks in the top-<em>k</em> that belong to relevant ground-truth inquiries, assessing context signal-to-noise ratio fed to the generator.</td>
+            <td class="metric-desc">Proportion of retrieved chunks in the top-<em>k</em> that belong to relevant ground-truth inquiries, assessing context signal-to-noise ratio fed to the generator. <strong>Range: [0.0, 1.0] &mdash; Closer to 1.0 is better.</strong></td>
           </tr>
           <tr>
             <td class="metric-name">Recall@K</td>
-            <td class="metric-desc">Proportion of expected ground-truth documents successfully retrieved in the top-<em>k</em>; critical for multi-document investigations where missing records compromises factual completeness.</td>
+            <td class="metric-desc">Proportion of expected ground-truth documents successfully retrieved in the top-<em>k</em>; critical for multi-document investigations where missing records compromises factual completeness. <strong>Range: [0.0, 1.0] &mdash; Closer to 1.0 is better.</strong></td>
           </tr>
           <tr>
             <td class="metric-name">Hit Rate@K</td>
-            <td class="metric-desc">Binary indicator (1 if at least one relevant document is retrieved, 0 otherwise) confirming baseline evidentiary retrieval success.</td>
+            <td class="metric-desc">Binary indicator (1 if at least one relevant document is retrieved, 0 otherwise) confirming baseline evidentiary retrieval success. <strong>Range: [0.0, 1.0] (binary {0, 1} per query) &mdash; Closer to 1.0 is better.</strong></td>
           </tr>
           <tr>
             <td class="metric-name">Mean Reciprocal Rank (MRR)</td>
-            <td class="metric-desc">Reciprocal rank of the first relevant chunk (1 / rank), rewarding pipelines that position key evidence at the very top of the ranking.</td>
+            <td class="metric-desc">Reciprocal rank of the first relevant chunk (1 / rank), rewarding pipelines that position key evidence at the very top of the ranking. <strong>Range: [0.0, 1.0] &mdash; Closer to 1.0 is better.</strong></td>
           </tr>
         </tbody>
       </table>
@@ -624,15 +779,15 @@ def _render_metric_guide_html() -> str:
         <tbody>
           <tr>
             <td class="metric-name">Citation Precision</td>
-            <td class="metric-desc">Proportion of inquiry documents and sources explicitly cited in the model's answer that are present in the ground-truth references.</td>
+            <td class="metric-desc">Proportion of inquiry documents and sources explicitly cited in the model's answer that are present in the ground-truth references. <strong>Range: [0.0, 1.0] &mdash; Closer to 1.0 is better.</strong></td>
           </tr>
           <tr>
             <td class="metric-name">Citation Recall</td>
-            <td class="metric-desc">Coverage of target ground-truth reference documents explicitly cited in the generated answer's reasoning.</td>
+            <td class="metric-desc">Coverage of target ground-truth reference documents explicitly cited in the generated answer's reasoning. <strong>Range: [0.0, 1.0] &mdash; Closer to 1.0 is better.</strong></td>
           </tr>
           <tr>
             <td class="metric-name">Citation Hallucination Rate</td>
-            <td class="metric-desc">Percentage of cited documents that <strong>were not present in the retrieved context</strong>, identifying critical forensic source hallucinations.</td>
+            <td class="metric-desc">Percentage of cited documents that <strong>were not present in the retrieved context</strong>, identifying critical forensic source hallucinations. <strong>Range: [0.0, 1.0] &mdash; Closer to 0.0 is better.</strong></td>
           </tr>
         </tbody>
       </table>
@@ -644,15 +799,15 @@ def _render_metric_guide_html() -> str:
         <tbody>
           <tr>
             <td class="metric-name">Token F1</td>
-            <td class="metric-desc">Harmonic mean of token-level precision and recall between the generated response and the reference answer, measuring preservation of essential keywords and vocabulary.</td>
+            <td class="metric-desc">Harmonic mean of token-level precision and recall between the generated response and the reference answer, measuring preservation of essential keywords and vocabulary. <strong>Range: [0.0, 1.0] &mdash; Closer to 1.0 is better.</strong></td>
           </tr>
           <tr>
             <td class="metric-name">ROUGE-L</td>
-            <td class="metric-desc">Symmetric harmonic F1 score (&beta; = 1.0) based on the Longest Common Subsequence (LCS), capturing sentence-level structural coherence and word ordering against the reference answer.</td>
+            <td class="metric-desc">Symmetric harmonic F1 score (&beta; = 1.0) based on the Longest Common Subsequence (LCS), capturing sentence-level structural coherence and word ordering against the reference answer. <strong>Range: [0.0, 1.0] &mdash; Closer to 1.0 is better.</strong></td>
           </tr>
           <tr>
             <td class="metric-name">BLEU-4</td>
-            <td class="metric-desc">Geometric mean of 1-to-4-gram precision with brevity penalty and smoothing, reflecting phrase-level fluency and exact textual alignment.</td>
+            <td class="metric-desc">Geometric mean of 1-to-4-gram precision with brevity penalty and smoothing, reflecting phrase-level fluency and exact textual alignment. <strong>Range: [0.0, 1.0] &mdash; Closer to 1.0 is better.</strong></td>
           </tr>
         </tbody>
       </table>
@@ -664,19 +819,19 @@ def _render_metric_guide_html() -> str:
         <tbody>
           <tr>
             <td class="metric-name">Faithfulness (Groundedness)</td>
-            <td class="metric-desc">Evaluates whether every factual claim in the generated answer is strictly grounded in and substantiated by the retrieved context, serving as the primary safeguard against hallucinations.</td>
+            <td class="metric-desc">Evaluates whether every factual claim in the generated answer is strictly grounded in and substantiated by the retrieved context, serving as the primary safeguard against hallucinations. <strong>Range: [0.0, 1.0] &mdash; Closer to 1.0 is better.</strong></td>
           </tr>
           <tr>
             <td class="metric-name">Answer Relevance</td>
-            <td class="metric-desc">Assesses whether the generated response directly and comprehensively answers the investigative query, penalizing evasive, repetitive, or off-topic content.</td>
+            <td class="metric-desc">Assesses whether the generated response directly and comprehensively answers the investigative query, penalizing evasive, repetitive, or off-topic content. <strong>Range: [0.0, 1.0] &mdash; Closer to 1.0 is better.</strong></td>
           </tr>
           <tr>
             <td class="metric-name">Context Recall</td>
-            <td class="metric-desc">Verifies whether the retrieved context chunks contain all essential investigative facts present in the official reference answer (RAGAS Context Recall).</td>
+            <td class="metric-desc">Verifies whether the retrieved context chunks contain all essential investigative facts present in the official reference answer (RAGAS Context Recall). <strong>Range: [0.0, 1.0] &mdash; Closer to 1.0 is better.</strong></td>
           </tr>
           <tr>
             <td class="metric-name">Answer Correctness</td>
-            <td class="metric-desc">Verifies whether the generated answer captures all essential investigative facts present in the official reference answer.</td>
+            <td class="metric-desc">Verifies whether the generated answer captures all essential investigative facts present in the official reference answer. <strong>Range: [0.0, 1.0] &mdash; Closer to 1.0 is better.</strong></td>
           </tr>
         </tbody>
       </table>
@@ -827,6 +982,313 @@ def _render_comparison_config_html(
 </div>"""
 
 
+def _score_to_heatmap_colors(score: float) -> tuple[str, str, str]:
+    """Map a normalized score in [0.0, 1.0] to (bg_color, text_color, border_color) HSL strings."""
+    clamped = max(0.0, min(1.0, float(score)))
+    if clamped < 0.5:
+        # 0.0 (Red, hue=0) -> 0.5 (Amber, hue=42)
+        ratio = clamped / 0.5
+        hue = int(round(0 + ratio * 42))
+        sat_bg, light_bg = 86, 92
+        sat_txt, light_txt = 75, 28
+        sat_brd, light_brd = 75, 76
+    else:
+        # 0.5 (Amber, hue=42) -> 1.0 (Green, hue=142)
+        ratio = (clamped - 0.5) / 0.5
+        hue = int(round(42 + ratio * 100))
+        sat_bg, light_bg = 78, 89
+        sat_txt, light_txt = 78, 22
+        sat_brd, light_brd = 65, 68
+    return (
+        f"hsl({hue}, {sat_bg}%, {light_bg}%)",
+        f"hsl({hue}, {sat_txt}%, {light_txt}%)",
+        f"hsl({hue}, {sat_brd}%, {light_brd}%)",
+    )
+
+
+def _compute_composite_score(agg: TaxonomyAggregate) -> float:
+    """Compute the mean composite score across all [0.0, 1.0] quality metrics."""
+    ans_corr = getattr(agg, "mean_answer_correctness", 0.0)
+    cit_prec = getattr(agg, "mean_citation_precision", 0.0)
+    cit_rec = getattr(agg, "mean_citation_recall", 0.0)
+    cit_hal = getattr(agg, "mean_citation_hallucination_rate", 0.0)
+    vals = [
+        agg.mean_precision_at_k,
+        agg.mean_recall_at_k,
+        agg.mean_hit_rate,
+        agg.mean_mrr,
+        cit_prec,
+        cit_rec,
+        max(0.0, min(1.0, 1.0 - cit_hal)),
+        agg.mean_rouge_l,
+        agg.mean_token_f1,
+        agg.mean_bleu_4,
+        agg.mean_faithfulness,
+        agg.mean_answer_relevance,
+        agg.mean_context_recall,
+        ans_corr,
+    ]
+    return sum(vals) / len(vals)
+
+
+def _render_typology_complexity_matrix_html(summary: EvaluationSummary) -> str:
+    """Render a 2D Typology (rows) x Complexity (columns) Matrix with a color heatmap."""
+    typologies = sorted(
+        {"T1", "T2", "T3"}
+        | set(summary.matrix.keys())
+        | set(summary.by_typology.keys())
+    )
+    complexities = sorted(
+        {"C1", "C2", "C3"}
+        | {c for comp_dict in summary.matrix.values() for c in comp_dict.keys()}
+        | set(summary.by_complexity.keys())
+    )
+
+    # Compute latency range across populated aggregates for normalized heatmap coloring (lower is better)
+    all_lats: list[float] = []
+    for comp_dict in summary.matrix.values():
+        for a in comp_dict.values():
+            if a and a.sample_count > 0:
+                all_lats.append(a.mean_latency_ms)
+    for a in summary.by_typology.values():
+        if a and a.sample_count > 0:
+            all_lats.append(a.mean_latency_ms)
+    for a in summary.by_complexity.values():
+        if a and a.sample_count > 0:
+            all_lats.append(a.mean_latency_ms)
+    if summary.overall and summary.total_samples > 0:
+        all_lats.append(summary.overall.mean_latency_ms)
+
+    min_lat = min(all_lats) if all_lats else 0.0
+    max_lat = max(all_lats) if all_lats else 0.0
+
+    def _lat_to_score(lat: float) -> float:
+        if max_lat > min_lat:
+            return max(0.0, min(1.0, 1.0 - (lat - min_lat) / (max_lat - min_lat)))
+        return 1.0
+
+    metric_specs = [
+        ("composite", "Composite Score", _compute_composite_score, lambda v: v, "{:.4f}"),
+        ("precision", "Precision@K", lambda a: a.mean_precision_at_k, lambda v: v, "{:.4f}"),
+        ("recall", "Recall@K", lambda a: a.mean_recall_at_k, lambda v: v, "{:.4f}"),
+        ("hit-rate", "Hit Rate@K", lambda a: a.mean_hit_rate, lambda v: v, "{:.4f}"),
+        ("mrr", "MRR", lambda a: a.mean_mrr, lambda v: v, "{:.4f}"),
+        (
+            "cit-precision",
+            "Citation Precision",
+            lambda a: getattr(a, "mean_citation_precision", 0.0),
+            lambda v: v,
+            "{:.4f}",
+        ),
+        (
+            "cit-recall",
+            "Citation Recall",
+            lambda a: getattr(a, "mean_citation_recall", 0.0),
+            lambda v: v,
+            "{:.4f}",
+        ),
+        (
+            "cit-hallucination",
+            "Citation Hallucination Rate",
+            lambda a: getattr(a, "mean_citation_hallucination_rate", 0.0),
+            lambda v: 1.0 - v,
+            "{:.4f}",
+        ),
+        ("rouge-l", "ROUGE-L", lambda a: a.mean_rouge_l, lambda v: v, "{:.4f}"),
+        ("token-f1", "Token F1", lambda a: a.mean_token_f1, lambda v: v, "{:.4f}"),
+        ("bleu-4", "BLEU-4", lambda a: a.mean_bleu_4, lambda v: v, "{:.4f}"),
+        ("faithfulness", "Faithfulness", lambda a: a.mean_faithfulness, lambda v: v, "{:.4f}"),
+        ("relevance", "Answer Relevance", lambda a: a.mean_answer_relevance, lambda v: v, "{:.4f}"),
+        ("context-recall", "Context Recall", lambda a: a.mean_context_recall, lambda v: v, "{:.4f}"),
+        (
+            "answer-correctness",
+            "Answer Correctness",
+            lambda a: getattr(a, "mean_answer_correctness", 0.0),
+            lambda v: v,
+            "{:.4f}",
+        ),
+        ("latency", "Latency (ms)", lambda a: a.mean_latency_ms, _lat_to_score, "{:.1f}"),
+    ]
+
+    # Build Consolidated (All Metrics) 2D table (without Avg badge, Row Mean, or Col Mean)
+    comp_headers = "".join(
+        f"<th class='num'>{html.escape(comp)}</th>" for comp in complexities
+    )
+    consolidated_rows: list[str] = []
+
+    for typ in typologies:
+        typ_esc = html.escape(typ)
+        comp_dict = summary.matrix.get(typ, {})
+        row_cells = [f"<th class='matrix-row-header'><strong>{typ_esc}</strong></th>"]
+
+        for comp in complexities:
+            agg = comp_dict.get(comp)
+            if agg is None or agg.sample_count == 0:
+                row_cells.append("<td class='heatmap-cell heatmap-cell-empty'>&mdash;</td>")
+                continue
+
+            comp_score = _compute_composite_score(agg)
+            bg_c, _, brd_c = _score_to_heatmap_colors(comp_score)
+
+            metric_rows_html: list[str] = []
+            for m_key, m_label, m_getter, m_color_fn, m_fmt in metric_specs[1:]:
+                m_val = m_getter(agg)
+                m_bg, m_txt, m_brd = _score_to_heatmap_colors(m_color_fn(m_val))
+                metric_rows_html.append(
+                    f"<div class='matrix-metric-row'>"
+                    f"<span class='matrix-metric-label'>{html.escape(m_label)}</span>"
+                    f"<span class='matrix-metric-pill' style='background-color: {m_bg}; color: {m_txt}; border: 1px solid {m_brd};'>{m_fmt.format(m_val)}</span>"
+                    f"</div>"
+                )
+
+            row_cells.append(
+                f"<td class='heatmap-cell' style='background-color: {bg_c}; border-color: {brd_c};'>"
+                f"  <div class='matrix-metric-grid'>{''.join(metric_rows_html)}</div>"
+                f"</td>"
+            )
+
+        consolidated_rows.append(f"<tr>{''.join(row_cells)}</tr>")
+
+    consolidated_panel = (
+        "<div class='matrix-panel' id='panel-consolidated'>"
+        "  <div class='table-wrapper'>"
+        "    <table class='matrix-2d-table'>"
+        f"      <thead><tr><th class='matrix-corner'>Typology \\ Complexity</th>{comp_headers}</tr></thead>"
+        f"      <tbody>{''.join(consolidated_rows)}</tbody>"
+        "    </table>"
+        "  </div>"
+        "</div>"
+    )
+
+    # Build individual metric panels (only numeric values inside cells)
+    single_panels: list[str] = []
+    for m_key, m_label, m_getter, m_color_fn, m_fmt in metric_specs:
+        m_rows: list[str] = []
+        for typ in typologies:
+            typ_esc = html.escape(typ)
+            comp_dict = summary.matrix.get(typ, {})
+            r_cells = [f"<th class='matrix-row-header'><strong>{typ_esc}</strong></th>"]
+            for comp in complexities:
+                agg = comp_dict.get(comp)
+                if agg is None or agg.sample_count == 0:
+                    r_cells.append("<td class='heatmap-cell heatmap-cell-empty'>&mdash;</td>")
+                else:
+                    val = m_getter(agg)
+                    bg_c, txt_c, brd_c = _score_to_heatmap_colors(m_color_fn(val))
+                    r_cells.append(
+                        f"<td class='heatmap-cell heatmap-single-cell' style='background-color: {bg_c}; color: {txt_c}; border-color: {brd_c};'>"
+                        f"  <div class='heatmap-single-score'>{m_fmt.format(val)}</div>"
+                        f"</td>"
+                    )
+
+            row_agg = summary.by_typology.get(typ)
+            if row_agg and row_agg.sample_count > 0:
+                r_val = m_getter(row_agg)
+                r_bg, r_txt, r_brd = _score_to_heatmap_colors(m_color_fn(r_val))
+                r_cells.append(
+                    f"<td class='heatmap-cell heatmap-single-cell' style='background-color: {r_bg}; color: {r_txt}; border-color: {r_brd};'>"
+                    f"  <div class='heatmap-single-score'>{m_fmt.format(r_val)}</div>"
+                    f"</td>"
+                )
+            else:
+                populated = [
+                    comp_dict[c]
+                    for c in complexities
+                    if c in comp_dict and comp_dict[c].sample_count > 0
+                ]
+                if populated:
+                    r_val = sum(m_getter(a) for a in populated) / len(populated)
+                    r_bg, r_txt, r_brd = _score_to_heatmap_colors(m_color_fn(r_val))
+                    r_cells.append(
+                        f"<td class='heatmap-cell heatmap-single-cell' style='background-color: {r_bg}; color: {r_txt}; border-color: {r_brd};'>"
+                        f"  <div class='heatmap-single-score'>{m_fmt.format(r_val)}</div>"
+                        f"</td>"
+                    )
+                else:
+                    r_cells.append("<td class='heatmap-cell heatmap-cell-empty'>&mdash;</td>")
+
+            m_rows.append(f"<tr>{''.join(r_cells)}</tr>")
+
+        # Footer row for Col Mean in single metric panel
+        c_cells = ["<th class='matrix-row-header'><strong>Col Mean</strong></th>"]
+        for comp in complexities:
+            c_agg = summary.by_complexity.get(comp)
+            if c_agg and c_agg.sample_count > 0:
+                c_val = m_getter(c_agg)
+                c_bg, c_txt, c_brd = _score_to_heatmap_colors(m_color_fn(c_val))
+                c_cells.append(
+                    f"<td class='heatmap-cell heatmap-single-cell' style='background-color: {c_bg}; color: {c_txt}; border-color: {c_brd};'>"
+                    f"  <div class='heatmap-single-score'>{m_fmt.format(c_val)}</div>"
+                    f"</td>"
+                )
+            else:
+                populated_c = [
+                    summary.matrix[t][comp]
+                    for t in typologies
+                    if t in summary.matrix
+                    and comp in summary.matrix[t]
+                    and summary.matrix[t][comp].sample_count > 0
+                ]
+                if populated_c:
+                    c_val = sum(m_getter(a) for a in populated_c) / len(populated_c)
+                    c_bg, c_txt, c_brd = _score_to_heatmap_colors(m_color_fn(c_val))
+                    c_cells.append(
+                        f"<td class='heatmap-cell heatmap-single-cell' style='background-color: {c_bg}; color: {c_txt}; border-color: {c_brd};'>"
+                        f"  <div class='heatmap-single-score'>{m_fmt.format(c_val)}</div>"
+                        f"</td>"
+                    )
+                else:
+                    c_cells.append("<td class='heatmap-cell heatmap-cell-empty'>&mdash;</td>")
+
+        if summary.overall and summary.total_samples > 0:
+            ov_val = m_getter(summary.overall)
+            ov_bg, ov_txt, ov_brd = _score_to_heatmap_colors(m_color_fn(ov_val))
+            c_cells.append(
+                f"<td class='heatmap-cell heatmap-single-cell' style='background-color: {ov_bg}; color: {ov_txt}; border-color: {ov_brd};'>"
+                f"  <div class='heatmap-single-score'>{m_fmt.format(ov_val)}</div>"
+                f"</td>"
+            )
+        else:
+            c_cells.append("<td class='heatmap-cell heatmap-cell-empty'>&mdash;</td>")
+
+        m_rows.append(f"<tr>{''.join(c_cells)}</tr>")
+
+        single_panels.append(
+            f"<div class='matrix-panel' id='panel-{m_key}'>"
+            f"  <div class='table-wrapper'>"
+            f"    <table class='matrix-2d-table'>"
+            f"      <thead><tr><th class='matrix-corner'>Typology \\ Complexity</th>{comp_headers}<th class='num'>Row Mean</th></tr></thead>"
+            f"      <tbody>{''.join(m_rows)}</tbody>"
+            f"    </table>"
+            f"  </div>"
+            f"</div>"
+        )
+
+    tab_inputs_and_labels = [
+        "<input type='radio' name='matrix-tab' id='tab-consolidated' class='matrix-tab-input' checked>",
+        "<label for='tab-consolidated' class='matrix-tab-label'>Consolidated (All Metrics)</label>",
+    ]
+    for m_key, m_label, _, _, _ in metric_specs:
+        tab_inputs_and_labels.append(
+            f"<input type='radio' name='matrix-tab' id='tab-{m_key}' class='matrix-tab-input'>"
+        )
+        tab_inputs_and_labels.append(
+            f"<label for='tab-{m_key}' class='matrix-tab-label'>{html.escape(m_label)}</label>"
+        )
+
+    return "\n".join(
+        [
+            "<div class='matrix-tabs-container'>",
+            *tab_inputs_and_labels,
+            "  <div class='matrix-panels'>",
+            consolidated_panel,
+            *single_panels,
+            "  </div>",
+            "</div>",
+        ]
+    )
+
+
 def generate_html_report(
     summary: EvaluationSummary,
     output_path: Path | str | None = None,
@@ -896,38 +1358,9 @@ def generate_html_report(
         "</ul>",
         _format_aggregate_table("Complexity Breakdown", summary.by_complexity),
         "<h2>6. Typology x Complexity Matrix</h2>",
-        "<div class='table-wrapper'>",
-        "  <table>",
-        "    <thead><tr><th>Typology</th><th>Complexity</th><th class='num'>Samples</th><th class='num'>Recall@K</th><th class='num'>MRR</th><th class='num'>Token F1</th><th class='num'>Faithfulness</th><th class='num'>Relevance</th><th class='num'>Context Recall</th><th class='num'>Answer Correctness</th></tr></thead>",
-        "    <tbody>",
+        _render_typology_complexity_matrix_html(summary),
+        "<h2>7. Sample-Level Granular Results</h2>",
     ]
-
-    for typ, comp_dict in sorted(summary.matrix.items()):
-        for comp, agg in sorted(comp_dict.items()):
-            ans_corr_m = getattr(agg, "mean_answer_correctness", 0.0)
-            body_parts.append(
-                f"<tr>"
-                f"<td><strong>{html.escape(typ)}</strong></td>"
-                f"<td><strong>{html.escape(comp)}</strong></td>"
-                f"<td class='num'>{agg.sample_count}</td>"
-                f"<td class='num'>{agg.mean_recall_at_k:.4f}</td>"
-                f"<td class='num'>{agg.mean_mrr:.4f}</td>"
-                f"<td class='num'>{agg.mean_token_f1:.4f}</td>"
-                f"<td class='num'>{agg.mean_faithfulness:.4f}</td>"
-                f"<td class='num'>{agg.mean_answer_relevance:.4f}</td>"
-                f"<td class='num'>{agg.mean_context_recall:.4f}</td>"
-                f"<td class='num'>{ans_corr_m:.4f}</td>"
-                f"</tr>"
-            )
-
-    body_parts.extend(
-        [
-            "    </tbody>",
-            "  </table>",
-            "</div>",
-            "<h2>7. Sample-Level Granular Results</h2>",
-        ]
-    )
 
     for s in summary.samples:
         safe_id = re.sub(r"[^\w\-]", "_", s.item.id)

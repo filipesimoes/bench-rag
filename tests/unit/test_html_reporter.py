@@ -286,7 +286,9 @@ def test_generate_html_report_overview(tmp_path: Path):
     assert "Complexity Breakdown" in content
     assert "Typology x Complexity Matrix" in content
     assert "<div class='card-title'>Context Recall</div>" in content
-    assert "<th class='num'>Context Recall</th>" in content
+    assert '<th class="num">Context Recall</th>' in content
+    assert "<th class='matrix-corner'>Typology \\ Complexity</th><th class='num'>C1</th><th class='num'>C2</th><th class='num'>C3</th><th class='num'>Row Mean</th>" in content
+    assert "<th class='matrix-row-header'><strong>T1</strong></th>" in content
     assert "Context Recall: <strong>0.9000</strong>" in content
     assert "href='questions/GT-T1-C1.html'" in content
 
@@ -299,6 +301,9 @@ def test_generate_html_report_overview(tmp_path: Path):
     assert "LLM-as-a-Judge Forensic Metrics" in content
     assert "Citation Hallucination Rate" in content
     assert "Faithfulness (Groundedness)" in content
+    assert "Range: [0.0, 1.0] &mdash; Closer to 1.0 is better." in content
+    assert "Range: [0.0, 1.0] (binary {0, 1} per query) &mdash; Closer to 1.0 is better." in content
+    assert "Range: [0.0, 1.0] &mdash; Closer to 0.0 is better." in content
 
     # Test with custom question_rel_dir
     content_compare = generate_html_report(
@@ -468,3 +473,110 @@ def test_html_escaping():
     assert "&amp; &#x27;strawman&#x27;" in content or "&amp; 'strawman'" in content or "&amp;" in content
     assert "GT-&lt;test&gt;&amp;1" in content
     assert "Critique with &lt;brackets&gt; &amp; ampersand" in content
+
+
+def test_typology_complexity_2d_matrix_heatmap():
+    sample = _create_dummy_sample(with_rerank=False)
+    high_agg = TaxonomyAggregate(
+        sample_count=3,
+        mean_precision_at_k=1.0,
+        mean_recall_at_k=1.0,
+        mean_hit_rate=1.0,
+        mean_mrr=1.0,
+        mean_rouge_l=1.0,
+        mean_token_f1=1.0,
+        mean_bleu_4=1.0,
+        mean_faithfulness=1.0,
+        mean_answer_relevance=1.0,
+        mean_context_recall=1.0,
+        mean_latency_ms=100.0,
+        mean_answer_correctness=1.0,
+    )
+    mid_agg = TaxonomyAggregate(
+        sample_count=2,
+        mean_precision_at_k=0.5,
+        mean_recall_at_k=0.5,
+        mean_hit_rate=0.5,
+        mean_mrr=0.5,
+        mean_rouge_l=0.5,
+        mean_token_f1=0.5,
+        mean_bleu_4=0.5,
+        mean_faithfulness=0.5,
+        mean_answer_relevance=0.5,
+        mean_context_recall=0.5,
+        mean_latency_ms=150.0,
+        mean_answer_correctness=0.5,
+    )
+    low_agg = TaxonomyAggregate(
+        sample_count=1,
+        mean_precision_at_k=0.0,
+        mean_recall_at_k=0.0,
+        mean_hit_rate=0.0,
+        mean_mrr=0.0,
+        mean_rouge_l=0.0,
+        mean_token_f1=0.0,
+        mean_bleu_4=0.0,
+        mean_faithfulness=0.0,
+        mean_answer_relevance=0.0,
+        mean_context_recall=0.0,
+        mean_latency_ms=200.0,
+        mean_answer_correctness=0.0,
+    )
+
+    summary = EvaluationSummary(
+        pipeline_name="heatmap_test_pipeline",
+        total_samples=6,
+        overall=mid_agg,
+        by_typology={"T1": high_agg, "T2": mid_agg, "T3": low_agg},
+        by_complexity={"C1": high_agg, "C2": mid_agg, "C3": low_agg},
+        matrix={
+            "T1": {"C1": high_agg},
+            "T2": {"C2": mid_agg},
+            "T3": {"C3": low_agg},
+        },
+        samples=[sample],
+    )
+
+    content = generate_html_report(summary)
+
+    # Verify 2D layout: Consolidated tab has only C1, C2, C3 columns (no Row Mean), while individual metric tabs have Row Mean
+    assert "<thead><tr><th class='matrix-corner'>Typology \\ Complexity</th><th class='num'>C1</th><th class='num'>C2</th><th class='num'>C3</th></tr></thead>" in content
+    assert "<thead><tr><th class='matrix-corner'>Typology \\ Complexity</th><th class='num'>C1</th><th class='num'>C2</th><th class='num'>C3</th><th class='num'>Row Mean</th></tr></thead>" in content
+    assert "<th class='matrix-row-header'><strong>T1</strong></th>" in content
+    assert "<th class='matrix-row-header'><strong>T2</strong></th>" in content
+    assert "<th class='matrix-row-header'><strong>T3</strong></th>" in content
+    assert "<th class='matrix-row-header'><strong>Col Mean</strong></th>" in content
+
+    # Verify Score Color Scale card and sample count subtexts were removed
+    assert "Score Color Scale" not in content
+    assert "0 samples" not in content
+    assert "Avg:" not in content
+    assert "Typology \\ Complexity (" not in content
+
+    # Verify interactive metric selector tabs for all metrics
+    assert "id='tab-consolidated'" in content
+    assert "id='tab-composite'" in content
+    assert "id='tab-precision'" in content
+    assert "id='tab-recall'" in content
+    assert "id='tab-hit-rate'" in content
+    assert "id='tab-mrr'" in content
+    assert "id='tab-cit-precision'" in content
+    assert "id='tab-cit-recall'" in content
+    assert "id='tab-cit-hallucination'" in content
+    assert "id='tab-rouge-l'" in content
+    assert "id='tab-token-f1'" in content
+    assert "id='tab-bleu-4'" in content
+    assert "id='tab-faithfulness'" in content
+    assert "id='tab-relevance'" in content
+    assert "id='tab-context-recall'" in content
+    assert "id='tab-answer-correctness'" in content
+    assert "id='tab-latency'" in content
+
+    # Verify color graduation (1.0 -> green hsl(142, ...), 0.5 -> amber hsl(42, ...), 0.0 -> red hsl(0, ...))
+    assert "hsl(142, 78%, 89%)" in content
+    assert "hsl(42, 78%, 89%)" in content
+    assert "hsl(0, 86%, 92%)" in content
+
+    # Verify unpopulated cells render clean empty placeholder
+    assert "<td class='heatmap-cell heatmap-cell-empty'>&mdash;</td>" in content
+

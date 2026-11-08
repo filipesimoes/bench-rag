@@ -47,34 +47,48 @@ The benchmark partitions queries into three distinct investigative typologies:
 Let $C_k = [c_1, c_2, \dots, c_m]$ (where $m \le k$) be the ranked list of retrieved chunks at cutoff $k$, let $\text{doc}(c_i)$ be the normalized source inquiry document identifier of chunk $c_i$, and let $G = \{g_1, g_2, \dots, g_{|G|}\}$ be the ground-truth set of cited inquiry references (`inquiry_references`).
 
 #### Precision@k (Chunk-Level Signal-to-Noise Ratio)
-Measures the fraction of the top-$k$ cutoff window occupied by retrieved chunks that originate from a relevant ground-truth inquiry document:
+Measures the fraction of the top-$k$ cutoff window occupied by retrieved chunks that originate from a relevant ground-truth inquiry document (**Range: $[0.0, 1.0]$ — Closer to $1.0$ is better**):
 $$
 \text{Precision}@k = \frac{|\{ i \in \{1, \dots, m\} \mid \text{doc}(c_i) \in G \}|}{\max(1, k)}
 $$
 
 #### Recall@k (Document-Level Ground-Truth Coverage)
-Measures the fraction of unique ground-truth inquiry documents that are represented by at least one chunk in $C_k$:
+Measures the fraction of unique ground-truth inquiry documents that are represented by at least one chunk in $C_k$ (**Range: $[0.0, 1.0]$ — Closer to $1.0$ is better**):
 $$
 \text{Recall}@k = \frac{|\{ \text{doc}(c_i) \mid c_i \in C_k \} \cap G|}{|G|}
 $$
 
 #### Hit Rate@k
+Binary indicator confirming baseline evidentiary retrieval success (**Range: $[0.0, 1.0]$ (binary $\{0, 1\}$ per query) — Closer to $1.0$ is better**):
 $$
 \text{HitRate}@k = \begin{cases} 1 & \text{if } \exists c_i \in C_k \text{ s.t. } \text{doc}(c_i) \in G \\ 0 & \text{otherwise} \end{cases}
 $$
 
 #### Mean Reciprocal Rank (MRR)
-Measures the reciprocal of the 1-indexed rank of the first retrieved chunk belonging to a ground-truth document:
+Measures the reciprocal of the 1-indexed rank of the first retrieved chunk belonging to a ground-truth document (**Range: $[0.0, 1.0]$ — Closer to $1.0$ is better**):
 $$
 \text{MRR} = \begin{cases} \frac{1}{\min \{ i \in \{1, \dots, m\} \mid \text{doc}(c_i) \in G \}} & \text{if } \exists c_i \in C_k \text{ s.t. } \text{doc}(c_i) \in G \\ 0 & \text{otherwise} \end{cases}
 $$
 
 ---
 
-### 2.2 Lexical Generation Metrics
+### 2.2 Citation Attribution Metrics
+Let $D_{\text{cited}}$ be the set of unique normalized inquiry identifiers explicitly cited in the generator's response, $G$ be the ground-truth reference set, and $D_{\text{ret}} = \{ \text{doc}(c_i) \mid c_i \in C_k \}$ be the set of unique inquiry documents present in the retrieved context:
+
+1. **Citation Precision**:
+   Proportion of inquiry documents cited in the model's answer that are present in the ground-truth references $G$: $\frac{|D_{\text{cited}} \cap G|}{|D_{\text{cited}}|}$ (**Range: $[0.0, 1.0]$ — Closer to $1.0$ is better**).
+2. **Citation Recall**:
+   Coverage of target ground-truth reference documents explicitly cited in the generated answer: $\frac{|D_{\text{cited}} \cap G|}{|G|}$ (**Range: $[0.0, 1.0]$ — Closer to $1.0$ is better**).
+3. **Citation Hallucination Rate**:
+   Proportion of cited documents that **were not present in the retrieved context**: $\frac{|D_{\text{cited}} \setminus D_{\text{ret}}|}{|D_{\text{cited}}|}$, identifying critical forensic source hallucinations (**Range: $[0.0, 1.0]$ — Closer to $0.0$ is better**).
+
+---
+
+### 2.3 Lexical Generation Metrics
 Let $C_{\text{cand}}$ be the generated answer tokens and $C_{\text{ref}}$ be the ground-truth reference answer tokens, extracted using a forensic-aware tokenizer that preserves compound numeric and document identifiers (`\d+(?:[.,/-]\d+)*|\w+`).
 
 #### Token F1
+Harmonic mean of token-level precision and recall (**Range: $[0.0, 1.0]$ — Closer to $1.0$ is better**):
 $$
 \text{Precision}_{\text{tok}} = \frac{|C_{\text{cand}} \cap C_{\text{ref}}|}{|C_{\text{cand}}|}, \quad \text{Recall}_{\text{tok}} = \frac{|C_{\text{cand}} \cap C_{\text{ref}}|}{|C_{\text{ref}}|}
 $$
@@ -84,14 +98,16 @@ F_1 = \frac{2 \cdot \text{Precision}_{\text{tok}} \cdot \text{Recall}_{\text{tok
 $$
 
 #### ROUGE-L (Longest Common Subsequence — Symmetric Harmonic F1)
+Symmetric harmonic F1 score based on the Longest Common Subsequence (**Range: $[0.0, 1.0]$ — Closer to $1.0$ is better**):
 $$
-R_{\text{LCS}} = \frac{\text{LCS}(C_{\text{cand}}, C_{\text{ref}})}{|C_{\text{ref}}|}, \quad P_{\text{LCS}} = \frac{\text{LCS}(C_{\text{cand}}, C_{\text{ref}})}{|C_{\text{cand}}|}$$
+R_{\text{LCS}} = \frac{\text{LCS}(C_{\text{cand}}, C_{\text{ref}})}{|C_{\text{ref}}|}, \quad P_{\text{LCS}} = \frac{\text{LCS}(C_{\text{cand}}, C_{\text{ref}})}{|C_{\text{cand}}|}
+$$
 $$
 \text{ROUGE-L} = \frac{2 \cdot R_{\text{LCS}} \cdot P_{\text{LCS}}}{R_{\text{LCS}} + P_{\text{LCS}}} \quad (\beta = 1.0)
 $$
 
 #### BLEU-4
-Let $N = \min(4, |C_{\text{cand}}|, |C_{\text{ref}}|)$ and uniform weights $w_n = 1/N$:
+Let $N = \min(4, |C_{\text{cand}}|, |C_{\text{ref}}|)$ and uniform weights $w_n = 1/N$ (**Range: $[0.0, 1.0]$ — Closer to $1.0$ is better**):
 $$
 \text{BLEU-4} = \text{BP} \cdot \exp\left( \sum_{n=1}^N w_n \ln p_n \right)
 $$
@@ -99,17 +115,17 @@ where $\text{BP} = \min\left(1, e^{1 - \frac{|C_{\text{ref}}|}{|C_{\text{cand}}|
 
 ---
 
-### 2.3 LLM-as-a-Judge Forensic Metrics
+### 2.4 LLM-as-a-Judge Forensic Metrics
 A dedicated Judge model evaluates the pipeline output on a continuous scale $[0.0, 1.0]$ across four dimensions:
 
 1. **Faithfulness (Groundedness)**:
-   Measures whether every factual claim in the *Generated Answer* is substantiated by the *Retrieved Context*. Penalizes forensic hallucinations.
+   Measures whether every factual claim in the *Generated Answer* is substantiated by the *Retrieved Context*. Penalizes forensic hallucinations (**Range: $[0.0, 1.0]$ — Closer to $1.0$ is better**).
 2. **Answer Relevance**:
-   Measures whether the *Generated Answer* directly addresses the specific *Investigative Question* asked, without evasion or extraneous fluff.
+   Measures whether the *Generated Answer* directly addresses the specific *Investigative Question* asked, without evasion or extraneous fluff (**Range: $[0.0, 1.0]$ — Closer to $1.0$ is better**).
 3. **Context Recall**:
-   Measures whether the key factual points present in the *Reference Answer* are present in the *Retrieved Context* (evaluating retrieval sufficiency).
+   Measures whether the key factual points present in the *Reference Answer* are present in the *Retrieved Context*, evaluating retrieval sufficiency (**Range: $[0.0, 1.0]$ — Closer to $1.0$ is better**).
 4. **Answer Correctness**:
-   Measures whether the *Generated Answer* accurately and completely captures the key factual points of the *Reference Answer* (evaluating end-to-end generation accuracy).
+   Measures whether the *Generated Answer* accurately and completely captures the key factual points of the *Reference Answer*, evaluating end-to-end generation accuracy (**Range: $[0.0, 1.0]$ — Closer to $1.0$ is better**).
 
 ---
 
